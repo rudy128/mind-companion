@@ -144,7 +144,11 @@ void setup() {
 
     // ── Camera ───────────────────────────────────────────
     hasCamera = cameraInit();
-    if (!hasCamera) LOG_WARN("MAIN", "Camera unavailable — stream disabled");
+    if (!hasCamera) {
+        LOG_WARN("MAIN", "Camera unavailable — stream disabled");
+    } else {
+        cameraStartStreamServer();   // MJPEG on port 81 via esp_http_server
+    }
 
     // ── Web Server ───────────────────────────────────────
     dashState.gsrOhms          = 0;

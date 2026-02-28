@@ -3,7 +3,6 @@
 // =============================================================
 #include "web_server.h"
 #include "../config.h"
-#include "../camera/camera.h"
 #include "logger.h"
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
@@ -56,8 +55,17 @@ footer{text-align:center;padding:15px;color:#555;font-size:12px;}
 
 <div class="camera-wrap">
   <div class="cam-title">📷 Live Camera Feed</div>
-  <div class="camera-box"><img src="/camera" alt="Camera Stream"></div>
+  <div class="camera-box">
+    <img id="camImg" src="" alt="Camera Stream">
+  </div>
 </div>
+<script>
+// Build the stream URL at runtime so it works regardless of IP.
+// Stream server runs on port 81 (esp_http_server), separate from
+// the AsyncWebServer on port 80 which handles the dashboard + API.
+document.getElementById('camImg').src =
+  'http://' + window.location.hostname + ':81/stream';
+</script>
 
 <div class="grid">
 
@@ -260,16 +268,6 @@ static void handleData(AsyncWebServerRequest* request) {
     request->send(200, "application/json", json);
 }
 
-static void handleCamera(AsyncWebServerRequest* request) {
-    AsyncWebServerResponse* response = request->beginChunkedResponse(
-        "multipart/x-mixed-replace; boundary=frame",
-        [](uint8_t* buffer, size_t maxLen, size_t index) -> size_t {
-            return cameraCaptureToBuffer(buffer, maxLen);
-        }
-    );
-    request->send(response);
-}
-
 // ============ External action callbacks (set from main.cpp) ============
 static void (*breatheCallback)() = nullptr;
 static void (*alarmOnCallback)() = nullptr;
@@ -297,9 +295,6 @@ void webServerInit(DashboardState* state) {
         logClear();
         req->send(200, "text/plain", "OK");
     });
-
-    // Camera stream
-    server.on("/camera", HTTP_GET, handleCamera);
 
     // Control endpoints
     server.on("/api/breathe", HTTP_GET, [](AsyncWebServerRequest* req) {

@@ -7,13 +7,13 @@
 #include <Arduino.h>
 #include "esp_camera.h"
 
+// Initialise the OV2640 sensor. Call once in setup().
 bool cameraInit();
 
-// Capture a single JPEG frame.  Caller must call esp_camera_fb_return(fb) after use.
-camera_fb_t* cameraCapture();
-
-// Helper: capture frame directly into a buffer for async streaming.
-// Returns number of bytes written, or 0 on failure.
-size_t cameraCaptureToBuffer(uint8_t* buffer, size_t maxLen);
+// Start the MJPEG stream server on port 81.
+// After calling this, the stream is available at http://<IP>:81/stream
+// Uses esp_http_server (not AsyncWebServer) so the streaming loop
+// runs independently and never blocks the main web server.
+void cameraStartStreamServer();
 
 #endif // CAMERA_MODULE_H
