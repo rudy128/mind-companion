@@ -16,7 +16,7 @@ void ledBreathingInit() {
     // ESP32 Arduino Core 2.x PWM API (compatible with Core 2.x and older 3.x)
     ledcSetup(0, LED_PWM_FREQ, LED_PWM_RESOLUTION);
     ledcAttachPin(LED_PIN, 0);
-    ledcWrite(0, 0);
+    ledcWrite(0, 255);
     Serial.println("[LED] Breathing LED initialized on GPIO" + String(LED_PIN));
 }
 
@@ -64,7 +64,7 @@ bool ledBreathingUpdate() {
 
 void ledBreathingStop() {
     active = false;
-    ledcWrite(0, 0);
+    ledcWrite(0, 255);
 }
 
 bool ledBreathingIsActive() {

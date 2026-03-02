@@ -211,8 +211,9 @@ static void speechTask(void* param) {
         speechBusy = true;
         LOG_INFO("SPEECH", "Recording %d s...", MIC_RECORD_SECONDS);
 
+        tftShowListening(true);
         size_t bytesRead = micRecord(audioBuffer, sizeof(audioBuffer));
-
+        tftShowListening(false);
         if (bytesRead > 0) {
             size_t   pcmSize = bytesRead;
             size_t   wavSize = pcmSize + 44;

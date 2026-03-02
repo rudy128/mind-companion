@@ -268,6 +268,18 @@ void tftUpdateSpeechStatus(const String& text) {
     TFT_UNLOCK();
 }
 
+void tftShowListening(bool active) {
+    TFT_LOCK();
+    tft.fillRect(0, Y_SPEECH, 240, 15, ILI9341_BLACK);
+    if (active) {
+        tft.setTextColor(ILI9341_CYAN);
+        tft.setTextSize(1);
+        tft.setCursor(10, Y_SPEECH);
+        tft.print("Listening...");
+    }
+    TFT_UNLOCK();
+}
+
 Adafruit_ILI9341& tftGetDisplay() {
     return tft;
 }

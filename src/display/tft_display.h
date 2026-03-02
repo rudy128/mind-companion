@@ -25,6 +25,8 @@ void tftUpdateStress(const String& level, float gsrValue);
 void tftUpdateIP(const String& ip);
 void tftUpdateEmergency(bool active);
 void tftUpdateSpeechStatus(const String& text);
+void tftShowListening(bool active);
+
 
 // Get the global tft object for advanced use
 Adafruit_ILI9341& tftGetDisplay();
