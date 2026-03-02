@@ -300,34 +300,64 @@ void loop() {
         }
     }
 
-    // ── Emergency Button — low latency polling ────────────
+    // ── Emergency Button — triggered ONLY by child pressing button ──
+    // Latches on press. Does NOT auto-clear on release — stays active
+    // until voice command "stop" or web dashboard clears it.
+    static bool prevButtonState = false;
     bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
-    if (buttonPressed && !emergencyFlag) {
+
+if (buttonPressed && !prevButtonState) {   // just pressed
+
+    emergencyFlag = !emergencyFlag;  // TOGGLE state
+
+    if (emergencyFlag) {
+        LOG_ERROR("MAIN", "EMERGENCY ACTIVATED");
+        speakerAlarmStart();
+        tftUpdateEmergency(true);
+        dashState.emergencyActive = true;
+    } 
+    else {
+        LOG_ERROR("MAIN", "EMERGENCY CLEARED");
+        speakerAlarmStop();
+        tftUpdateEmergency(false);
+        dashState.emergencyActive = false;
+    }
+}
+
+prevButtonState = buttonPressed;
+    /*
+    bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
+    if (buttonPressed && !prevButtonState && !emergencyFlag) {
+        // Rising edge (just pressed)
         emergencyFlag = true;
         LOG_ERROR("MAIN", "EMERGENCY BUTTON PRESSED");
         speakerAlarmStart();
         tftUpdateEmergency(true);
         dashState.emergencyActive = true;
     }
-    if (!buttonPressed && emergencyFlag) {
-        emergencyFlag = false;
-        speakerAlarmStop();
-        tftUpdateEmergency(false);
-        dashState.emergencyActive = false;
-    }
+    prevButtonState = buttonPressed;
+*/
 
-    // ── No-Movement Emergency (8 hours) ───────────────────
-    if (now - lastMovementTime >= NO_MOVEMENT_EMERGENCY_MS && !emergencyFlag) {
-        LOG_ERROR("MAIN", "NO MOVEMENT FOR 8 HOURS — ALARM");
-        speakerAlarmStart();
-        tftUpdateEmergency(true);
-        dashState.emergencyActive = true;
-        emergencyFlag = true;
+    // ── No-Movement MPU Nudge (40 seconds) ───────────────
+    // Does NOT set emergencyFlag — just beeps like a buzzer to
+    // remind the child to move. Full alarm / emergency is button-only.
+    static unsigned long lastNudgeBeep = 0;
+    if (now - lastMovementTime >= NO_MOVEMENT_EMERGENCY_MS) {
+        // Start a new nudge beep pattern every 5 seconds (only if not already beeping)
+        if (now - lastNudgeBeep >= 5000UL && !speakerBuzzerIsActive()) {
+            LOG_WARN("MAIN", "No movement for %lu s — nudge beep",
+                     (now - lastMovementTime) / 1000UL);
+            speakerBuzzerStart();
+            lastNudgeBeep = now;
+        }
+    } else {
+        lastNudgeBeep = 0;   // reset so beep fires immediately next time threshold is hit
     }
 
     // ── Non-blocking actuator state machines ─────────────
     dashState.breathingActive = ledBreathingUpdate();
     speakerAlarmUpdate();
+    speakerBuzzerUpdate();
 
     // =========================================================
     // B. 1-SECOND DISPLAY + DASHBOARD TICK

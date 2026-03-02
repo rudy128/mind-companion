@@ -5,6 +5,7 @@
 #include "../config.h"
 #include "driver/i2s.h"
 #include <math.h>
+#include "buzzer_pcm.h"
 
 static bool          alarmActive = false;
 static unsigned long alarmToggle = 0;
@@ -41,6 +42,11 @@ void speakerInit() {
 
 void speakerPlayTone(float freqHz, unsigned long durationMs) {
     const int amplitude = 15000;
+    // Use a timeout of 50 ms per DMA chunk instead of portMAX_DELAY.
+    // This prevents blocking Core 1 indefinitely when the speech task
+    // on Core 0 is also hammering the FreeRTOS scheduler via I2S DMA.
+    const TickType_t kTimeout = 50 / portTICK_PERIOD_MS;
+
     unsigned long samples = (SPK_SAMPLE_RATE * durationMs) / 1000;
     int16_t buf[256];
     size_t written;
@@ -51,13 +57,13 @@ void speakerPlayTone(float freqHz, unsigned long durationMs) {
         for (int i = 0; i < count; i++) {
             buf[i] = (int16_t)(amplitude * sinf(2.0f * M_PI * freqHz * (idx + i) / SPK_SAMPLE_RATE));
         }
-        i2s_write(SPK_I2S_PORT, buf, count * sizeof(int16_t), &written, portMAX_DELAY);
+        i2s_write(SPK_I2S_PORT, buf, count * sizeof(int16_t), &written, kTimeout);
         idx += count;
     }
 
-    // Silence after tone
+    // Flush silence so the amplifier doesn't click
     memset(buf, 0, sizeof(buf));
-    i2s_write(SPK_I2S_PORT, buf, sizeof(buf), &written, portMAX_DELAY);
+    i2s_write(SPK_I2S_PORT, buf, sizeof(buf), &written, kTimeout);
 }
 
 void speakerBeepOK() {
@@ -84,7 +90,7 @@ void speakerAlarmStop() {
     // Push a short silence to flush the I2S buffer
     int16_t silence[256] = {0};
     size_t written;
-    i2s_write(SPK_I2S_PORT, silence, sizeof(silence), &written, portMAX_DELAY);
+    i2s_write(SPK_I2S_PORT, silence, sizeof(silence), &written, 50 / portTICK_PERIOD_MS);
     Serial.println("[SPK] Alarm stopped");
 }
 
@@ -104,4 +110,58 @@ bool speakerAlarmUpdate() {
 
 bool speakerAlarmIsActive() {
     return alarmActive;
+}
+
+// ============ Non-blocking nudge buzzer (PCM file) ============
+// Streams BUZZER_PCM[] from flash in 256-sample chunks each loop
+// iteration. Takes ~2 seconds total, then auto-stops.
+static bool          buzzerActive = false;
+static unsigned int  buzzerPos    = 0;   // current position in BUZZER_PCM[]
+
+void speakerBuzzerStart() {
+    if (buzzerActive) return;   // already playing — don't restart
+    buzzerActive = true;
+    buzzerPos    = 0;
+    Serial.println("[SPK] Nudge buzzer started");
+}
+
+void speakerBuzzerStop() {
+    if (!buzzerActive) return;
+    buzzerActive = false;
+    buzzerPos    = 0;
+    // Flush a short silence so the amplifier doesn't click
+    int16_t silence[64] = {0};
+    size_t written;
+    i2s_write(SPK_I2S_PORT, silence, sizeof(silence), &written, 10 / portTICK_PERIOD_MS);
+    Serial.println("[SPK] Nudge buzzer stopped");
+}
+
+bool speakerBuzzerIsActive() {
+    return buzzerActive;
+}
+
+// Call this every loop iteration while buzzer is active.
+// Sends one 256-sample chunk per call so it never blocks the loop.
+bool speakerBuzzerUpdate() {
+    if (!buzzerActive) return false;
+
+    if (buzzerPos >= BUZZER_PCM_LEN) {
+        speakerBuzzerStop();
+        return false;
+    }
+
+    const TickType_t kTimeout = 50 / portTICK_PERIOD_MS;
+    const int chunkSamples = 256;
+    int remaining = (int)(BUZZER_PCM_LEN - buzzerPos);
+    int count = remaining < chunkSamples ? remaining : chunkSamples;
+
+    size_t written = 0;
+    i2s_write(SPK_I2S_PORT,
+              &BUZZER_PCM[buzzerPos],
+              count * sizeof(int16_t),
+              &written,
+              kTimeout);
+
+    buzzerPos += count;
+    return true;
 }

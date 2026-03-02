@@ -96,10 +96,10 @@
 #define SLEEP_MOVEMENT_LIGHT     0.8f   // below this = light sleep; above = restless
 #define HR_ABNORMAL_HIGH         120    // BPM above this triggers breathing LED
 #define HR_ABNORMAL_LOW          50     // BPM below this triggers breathing LED
-#define NO_MOVEMENT_EMERGENCY_MS 28800000UL  // 8 hours → speaker alarm
+#define NO_MOVEMENT_EMERGENCY_MS 40000  // 40 seconds → speaker alarm
 #define GSR_HIGH_THRESHOLD       24000.0f
 #define GSR_MODERATE_LOW         14000.0f
-
+#define GSR_LOW_THRESHOLD         7900.0f
 // ========================= Motivational Quotes =========================
 #define NUM_QUOTES 6
 static const char* QUOTES[NUM_QUOTES] = {

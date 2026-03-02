@@ -20,4 +20,12 @@ void speakerAlarmStop();
 bool speakerAlarmUpdate();  // returns true while alarm is sounding
 bool speakerAlarmIsActive();
 
+// Non-blocking nudge buzzer — 3 short beeps at 1000 Hz, then auto-stops.
+// Call speakerBuzzerStart() once to kick it off.
+// Call speakerBuzzerUpdate() every loop iteration while active.
+void speakerBuzzerStart();
+void speakerBuzzerStop();
+bool speakerBuzzerUpdate();    // returns true while beeping
+bool speakerBuzzerIsActive();
+
 #endif // SPEAKER_H

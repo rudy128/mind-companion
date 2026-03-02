@@ -25,5 +25,6 @@ float gsrReadResistance() {
 String gsrGetStressLevel(float r) {
     if (r > GSR_HIGH_THRESHOLD)       return "High";
     if (r >= GSR_MODERATE_LOW)        return "Moderate";
-    return "Low";
+    if (r >= GSR_LOW_THRESHOLD)       return "Low";
+    return "Please wear finger band";
 }
