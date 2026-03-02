@@ -21,7 +21,7 @@ void tftUpdateTime(const char* timeStr);
 void tftUpdateHeartRate(int bpm, bool fingerPresent);
 void tftUpdateMPU(int x, int y, int z);
 void tftUpdateSleep(const String& quality);
-void tftUpdateStress(const String& level, float gsrOhms);
+void tftUpdateStress(const String& level, float gsrValue);
 void tftUpdateIP(const String& ip);
 void tftUpdateEmergency(bool active);
 void tftUpdateSpeechStatus(const String& text);

@@ -24,10 +24,11 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#0a0a1a;color:#e0e0e0;}
 h1{text-align:center;padding:20px 0;font-size:28px;
    background:linear-gradient(135deg,#1a0033,#0d001a);
    border-bottom:2px solid #3498db;}
-.camera-wrap{max-width:640px;margin:15px auto;padding:0 15px;}
+.camera-wrap{max-width:640px;margin:15px auto;padding:0 15px;display:none;}
 .camera-box{border:3px solid #3498db;border-radius:12px;overflow:hidden;background:#000;}
 .camera-box img{width:100%;display:block;}
 .cam-title{color:#3498db;text-align:center;margin-bottom:8px;font-size:18px;}
+.cam-countdown{text-align:center;color:#aaa;font-size:13px;margin-top:6px;}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:15px;padding:15px;}
 .card{background:linear-gradient(145deg,#1b0d35,#120828);padding:18px;border-radius:14px;
       text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.5);border:1px solid #222;}
@@ -53,19 +54,13 @@ footer{text-align:center;padding:15px;color:#555;font-size:12px;}
 <div class="emergency-banner" id="emergBanner">⚠ EMERGENCY ALERT — CHILD NEEDS HELP ⚠</div>
 <h1>🧠 M.I.N.D Companion</h1>
 
-<div class="camera-wrap">
+<div class="camera-wrap" id="cameraWrap">
   <div class="cam-title">📷 Live Camera Feed</div>
   <div class="camera-box">
     <img id="camImg" src="" alt="Camera Stream">
   </div>
+  <div class="cam-countdown" id="camCountdown"></div>
 </div>
-<script>
-// Build the stream URL at runtime so it works regardless of IP.
-// Stream server runs on port 81 (esp_http_server), separate from
-// the AsyncWebServer on port 80 which handles the dashboard + API.
-document.getElementById('camImg').src =
-  'http://' + window.location.hostname + ':81/stream';
-</script>
 
 <div class="grid">
 
@@ -95,6 +90,9 @@ document.getElementById('camImg').src =
   <div class="card">
     <h3>🚨 Emergency</h3>
     <div class="value" id="emergency" style="color:#2ecc71;">OK</div>
+    <button id="clearEmergBtn" class="btn btn-off"
+      style="display:none;margin-top:8px;"
+      onclick="clearEmergency()">✕ Dismiss</button>
   </div>
 
   <div class="card">
@@ -116,7 +114,7 @@ document.getElementById('camImg').src =
 
   <div class="card">
     <h3>📳 Vibration</h3>
-    <button class="btn btn-on" onclick="fetch('/api/vibrate')">Pulse</button>
+    <button class="btn btn-on" onclick="triggerVibrate()">Pulse</button>
   </div>
 
 </div>
@@ -180,13 +178,64 @@ function update(){
     document.getElementById('emergency').textContent=em?'ALERT':'OK';
     document.getElementById('emergency').style.color=em?'#e74c3c':'#2ecc71';
     document.getElementById('emergBanner').style.display=em?'block':'none';
+    document.getElementById('clearEmergBtn').style.display=em?'inline-block':'none';
 
     document.getElementById('voice').textContent=d.voice||'--';
     document.getElementById('breathing').textContent=d.breathing?'Active ✨':'Inactive';
+
+    // If server signals camera should open (awake nudge) and it's not already open, open it
+    if (d.camOpen && !camTimer) { openCamera(20); }
   }).catch(e=>console.error(e));
 }
 setInterval(update, 1000);   // 1-second dashboard refresh
 update();
+
+function clearEmergency(){
+  fetch('/api/emergency/clear').then(()=>update());
+}
+
+// ── Camera open/close for vibration pulse ─────────────────────
+let camTimer    = null;
+let camInterval = null;
+
+function openCamera(seconds) {
+  const wrap      = document.getElementById('cameraWrap');
+  const img       = document.getElementById('camImg');
+  const countdown = document.getElementById('camCountdown');
+
+  // Clear any existing timer
+  if (camTimer)    { clearTimeout(camTimer);   camTimer    = null; }
+  if (camInterval) { clearInterval(camInterval); camInterval = null; }
+
+  // Start stream and show section
+  img.src = 'http://' + window.location.hostname + ':81/stream';
+  wrap.style.display = 'block';
+
+  // Countdown display
+  let remaining = seconds;
+  countdown.textContent = 'Closing in ' + remaining + 's';
+  camInterval = setInterval(function(){
+    remaining--;
+    if (remaining > 0) {
+      countdown.textContent = 'Closing in ' + remaining + 's';
+    } else {
+      clearInterval(camInterval);
+      camInterval = null;
+    }
+  }, 1000);
+
+  // Auto-close after `seconds`
+  camTimer = setTimeout(function(){
+    img.src = '';                        // stop MJPEG stream
+    wrap.style.display = 'none';
+    countdown.textContent = '';
+    camTimer = null;
+  }, seconds * 1000);
+}
+
+function triggerVibrate(){
+  fetch('/api/vibrate').then(()=>{ openCamera(20); });
+}
 
 // ── Live Logs ─────────────────────────────────────────────────
 let logPaused   = false;
@@ -252,7 +301,7 @@ static void handleData(AsyncWebServerRequest* request) {
     JsonDocument doc;
     doc["bpm"]       = dashState->heartBPM;
     doc["finger"]    = dashState->fingerPresent;
-    doc["gsr"]       = dashState->gsrOhms;
+    doc["gsr"]       = dashState->gsrValue;
     doc["stress"]    = dashState->stressLevel;
     doc["sleep"]     = dashState->sleepQuality;
     doc["emergency"] = dashState->emergencyActive;
@@ -262,6 +311,8 @@ static void handleData(AsyncWebServerRequest* request) {
     doc["temp"]      = dashState->temperature;
     doc["voice"]     = dashState->lastVoiceCommand;
     doc["breathing"] = dashState->breathingActive;
+    doc["camOpen"]   = dashState->cameraOpen;
+    dashState->cameraOpen = false;   // one-shot: clear after dashboard reads it
 
     String json;
     serializeJson(doc, json);
@@ -269,10 +320,11 @@ static void handleData(AsyncWebServerRequest* request) {
 }
 
 // ============ External action callbacks (set from main.cpp) ============
-static void (*breatheCallback)() = nullptr;
-static void (*alarmOnCallback)() = nullptr;
-static void (*alarmOffCallback)() = nullptr;
-static void (*vibrateCallback)() = nullptr;
+static void (*breatheCallback)()        = nullptr;
+static void (*alarmOnCallback)()        = nullptr;
+static void (*alarmOffCallback)()       = nullptr;
+static void (*vibrateCallback)()        = nullptr;
+static void (*clearEmergencyCallback)() = nullptr;
 
 void webServerInit(DashboardState* state) {
     dashState = state;
@@ -314,6 +366,11 @@ void webServerInit(DashboardState* state) {
         req->send(200, "text/plain", "OK");
     });
 
+    server.on("/api/emergency/clear", HTTP_GET, [](AsyncWebServerRequest* req) {
+        if (clearEmergencyCallback) clearEmergencyCallback();
+        req->send(200, "text/plain", "OK");
+    });
+
     server.begin();
     Serial.println("[WEB] AsyncWebServer started on port 80");
 }
@@ -322,10 +379,12 @@ void webServerSetCallbacks(
     void (*breathe)(),
     void (*alarmOn)(),
     void (*alarmOff)(),
-    void (*vibrate)()
+    void (*vibrate)(),
+    void (*clearEmergency)()
 ) {
-    breatheCallback  = breathe;
-    alarmOnCallback  = alarmOn;
-    alarmOffCallback = alarmOff;
-    vibrateCallback  = vibrate;
+    breatheCallback        = breathe;
+    alarmOnCallback        = alarmOn;
+    alarmOffCallback       = alarmOff;
+    vibrateCallback        = vibrate;
+    clearEmergencyCallback = clearEmergency;
 }

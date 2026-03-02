@@ -85,7 +85,8 @@
 #define INTERVAL_GSR_CHECK       1000UL       // GSR stress reading — 1s
 #define INTERVAL_MPU_DISPLAY     1000UL       // MPU accel on TFT — 1s
 #define INTERVAL_SPEECH_RECOG    15000UL      // speech recognition cycle
-#define INTERVAL_VIBRATION_HOUR  3600000UL    // 1 hour vibration reminder
+#define INTERVAL_VIBRATION_HOUR  60000UL      // 1 minute vibration reminder
+#define INTERVAL_AWAKE_NUDGE     60000UL      // vibrate + open camera every 1 min while awake
 #define INTERVAL_SLEEP_WINDOW    30000UL      // sleep quality evaluation window
 #define INTERVAL_DASHBOARD_POLL  2000UL       // web dashboard AJAX poll (JS-side uses 1000ms now)
 #define INTERVAL_DISPLAY_UPDATE  1000UL       // RTC time on TFT

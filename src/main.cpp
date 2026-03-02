@@ -60,6 +60,8 @@ static unsigned long lastDisplayTick   = 0;   // 1-second unified TFT + dashStat
 static unsigned long lastSRTime        = 0;   // speech recognition (Core 0 task)
 static unsigned long lastVibrationTime = 0;
 static unsigned long lastMovementTime  = 0;
+static unsigned long awakeStartTime    = 0;   // when "Awake" state began
+static unsigned long lastAwakeNudge    = 0;   // last awake-nudge vibration
 
 // ─── Emergency state ───────────────────────────────────────
 static bool emergencyFlag = false;
@@ -75,6 +77,7 @@ static void onBreatheRequest();
 static void onAlarmOn();
 static void onAlarmOff();
 static void onVibrateRequest();
+static void onClearEmergency();
 static void speechTask(void* param);
 
 // ============================================================
@@ -151,7 +154,7 @@ void setup() {
     }
 
     // ── Web Server ───────────────────────────────────────
-    dashState.gsrOhms          = 0;
+    dashState.gsrValue         = 0;
     dashState.stressLevel      = "Low";
     dashState.heartBPM         = 0;
     dashState.fingerPresent    = false;
@@ -163,15 +166,18 @@ void setup() {
     dashState.temperature      = 0;
     dashState.lastVoiceCommand = "";
     dashState.breathingActive  = false;
+    dashState.cameraOpen       = false;
 
     webServerInit(&dashState);
-    webServerSetCallbacks(onBreatheRequest, onAlarmOn, onAlarmOff, onVibrateRequest);
+    webServerSetCallbacks(onBreatheRequest, onAlarmOn, onAlarmOff, onVibrateRequest, onClearEmergency);
 
     // ── Init timing ──────────────────────────────────────
     unsigned long now  = millis();
     lastDisplayTick    = now;
     lastVibrationTime  = now;
     lastMovementTime   = now;
+    awakeStartTime     = now;
+    lastAwakeNudge     = now;
 
     // ── Speech task on Core 0 ────────────────────────────
     // Stack 8 KB — enough for HTTP + JSON parsing
@@ -294,9 +300,26 @@ void loop() {
     // ── MPU6050 — continuous read for sleep detector ──────
     if (hasMPU) {
         mpuUpdate();
-        sleepDetectorFeed(mpuGetMovementDelta());
         if (mpuMovementDetected(MOVEMENT_THRESHOLD)) {
             lastMovementTime = now;
+        }
+    }
+
+    // ── RTC clock — polled once per second via millis() to avoid
+    //    hammering the shared I2C bus. TFT updates the instant the
+    //    second changes, so no drift from the 1-s display tick.
+    if (hasRTC) {
+        static unsigned long lastRtcPoll = 0;
+        static uint8_t       prevSecond  = 255;
+        if (now - lastRtcPoll >= 950UL) {   // poll ~50 ms before expected tick
+            lastRtcPoll = now;
+            uint8_t curSecond = rtcGetSecond();
+            if (curSecond != prevSecond) {
+                prevSecond = curSecond;
+                char timeBuf[9];
+                rtcFormatTime(timeBuf, sizeof(timeBuf));
+                tftUpdateTime(timeBuf);
+            }
         }
     }
 
@@ -368,13 +391,6 @@ prevButtonState = buttonPressed;
     if (now - lastDisplayTick >= 1000UL) {
         lastDisplayTick += 1000UL;   // advance by fixed step — prevents drift accumulation
 
-        // ── RTC clock ─────────────────────────────────────
-        if (hasRTC) {
-            char timeBuf[9];
-            rtcFormatTime(timeBuf, sizeof(timeBuf));
-            tftUpdateTime(timeBuf);           // change-guarded inside
-        }
-
         // ── Heart Rate ────────────────────────────────────
         if (hasHeartRate) {
             bool  finger = heartRateFingerPresent();
@@ -391,27 +407,54 @@ prevButtonState = buttonPressed;
 
         // ── MPU / Motion ──────────────────────────────────
         if (hasMPU) {
-            int ax = (int)mpuGetAccelX();
-            int ay = (int)mpuGetAccelY();
-            int az = (int)mpuGetAccelZ();
-            tftUpdateMPU(ax, ay, az);         // change-guarded inside
+            int dispX = (int)mpuGetAccelX();
+            int dispY = (int)mpuGetAccelY();
+            int dispZ = (int)mpuGetAccelZ();
+            tftUpdateMPU(dispX, dispY, dispZ); // change-guarded inside
             dashState.accelX      = mpuGetAccelX();
             dashState.accelY      = mpuGetAccelY();
             dashState.accelZ      = mpuGetAccelZ();
             dashState.temperature = mpuGetTemperature();
 
+            // Per-axis deltas for sleep detector (computed in mpu.cpp)
+            float dx = mpuGetDeltaX();
+            float dy = mpuGetDeltaY();
+            float dz = mpuGetDeltaZ();
+            int activeAxes = mpuGetActiveAxes(0.3f);
+
+            // Feed one sample per second into the 30-sample ring buffer
+            sleepDetectorFeed(dx, dy, dz, activeAxes);
+
             String sq = sleepDetectorGetQuality();
             tftUpdateSleep(sq);               // change-guarded inside
             dashState.sleepQuality = sq;
+
+            // ── Awake nudge — vibrate + open camera every 60 s ───
+            // Tracks how long the child has been continuously awake.
+            // Resets the awake-start timer as soon as they fall asleep.
+            if (sq == "Awake") {
+                if (now - lastAwakeNudge >= INTERVAL_AWAKE_NUDGE) {
+                    lastAwakeNudge = now;
+                    unsigned long awakeSeconds = (now - awakeStartTime) / 1000UL;
+                    LOG_INFO("MAIN", "Awake nudge — awake for %lu s", awakeSeconds);
+                    vibrationPulse(800);
+                    dashState.cameraOpen = true;   // dashboard will open camera for 20 s
+                }
+            } else {
+                // Child fell asleep — reset both timers
+                awakeStartTime = now;
+                lastAwakeNudge = now;
+                dashState.cameraOpen = false;
+            }
         }
 
         // ── GSR Stress ────────────────────────────────────
-        float  resistance = gsrReadResistance();
-        String stress     = gsrGetStressLevel(resistance);
-        tftUpdateStress(stress, resistance);  // change-guarded inside
-        dashState.gsrOhms     = resistance;
+        float  conductance = gsrReadConductance();
+        String stress      = gsrGetStressLevel(conductance);
+        tftUpdateStress(stress, conductance); // change-guarded inside
+        dashState.gsrValue    = conductance;
         dashState.stressLevel = stress;
-        LOG_DEBUG("GSR", "R=%.0f Ohm => %s", resistance, stress.c_str());
+        LOG_DEBUG("GSR", "C=%.0f => %s", conductance, stress.c_str());
 
         // ── Hourly vibration reminder ─────────────────────
         if (now - lastVibrationTime >= INTERVAL_VIBRATION_HOUR) {
@@ -432,7 +475,14 @@ prevButtonState = buttonPressed;
 // ============================================================
 //  Callbacks (web server remote control → Core 1 safe)
 // ============================================================
-static void onBreatheRequest() { ledBreathingStart(5); }
-static void onAlarmOn()        { speakerAlarmStart(); }
-static void onAlarmOff()       { speakerAlarmStop(); }
-static void onVibrateRequest() { vibrationPulse(800); }
+static void onBreatheRequest()   { ledBreathingStart(5); }
+static void onAlarmOn()          { speakerAlarmStart(); }
+static void onAlarmOff()         { speakerAlarmStop(); }
+static void onVibrateRequest()   { vibrationPulse(800); }
+static void onClearEmergency()   {
+    emergencyFlag = false;
+    speakerAlarmStop();
+    tftUpdateEmergency(false);
+    dashState.emergencyActive = false;
+    LOG_INFO("MAIN", "Emergency cleared via dashboard");
+}

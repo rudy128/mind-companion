@@ -191,7 +191,7 @@ void tftUpdateSleep(const String& quality) {
     TFT_UNLOCK();
 }
 
-void tftUpdateStress(const String& level, float gsrOhms) {
+void tftUpdateStress(const String& level, float gsrValue) {
     if (level == prevStress) return;
     prevStress = level;
 

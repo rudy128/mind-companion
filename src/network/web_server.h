@@ -8,7 +8,7 @@
 
 // Shared state struct for dashboard display
 struct DashboardState {
-    float  gsrOhms;
+    float  gsrValue;
     String stressLevel;
     int    heartBPM;
     bool   fingerPresent;
@@ -18,6 +18,7 @@ struct DashboardState {
     float  temperature;
     String lastVoiceCommand;
     bool   breathingActive;
+    bool   cameraOpen;        // true = dashboard should show camera feed
 };
 
 // Initialize and start the async web server on port 80.
@@ -30,7 +31,8 @@ void webServerSetCallbacks(
     void (*breathe)(),
     void (*alarmOn)(),
     void (*alarmOff)(),
-    void (*vibrate)()
+    void (*vibrate)(),
+    void (*clearEmergency)()
 );
 
 #endif // WEB_SERVER_H

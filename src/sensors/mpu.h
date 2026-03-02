@@ -21,4 +21,12 @@ bool  mpuMovementDetected(float threshold);
 // Returns the delta between current and last magnitude
 float mpuGetMovementDelta();
 
+// Per-axis absolute deltas (current vs previous reading)
+float mpuGetDeltaX();
+float mpuGetDeltaY();
+float mpuGetDeltaZ();
+
+// Count of axes that changed by more than `threshold` m/s²
+int   mpuGetActiveAxes(float threshold);
+
 #endif // MPU_SENSOR_H

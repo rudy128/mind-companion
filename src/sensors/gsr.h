@@ -7,7 +7,7 @@
 #include <Arduino.h>
 
 void   gsrInit();
-float  gsrReadResistance();          // Ohms
-String gsrGetStressLevel(float r);   // "Low", "Moderate", "High"
+float  gsrReadConductance();         // µS (microsiemens)
+String gsrGetStressLevel(float c);   // "Low", "Moderate", "High"
 
 #endif // GSR_SENSOR_H

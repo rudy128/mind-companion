@@ -8,9 +8,10 @@
 
 void   sleepDetectorInit();
 
-// Call every loop iteration with the current movement delta.
-// Internally accumulates over the configured window.
-void   sleepDetectorFeed(float movementDelta);
+// Call once per second with per-axis deltas and active-axis count.
+//   dx, dy, dz   — absolute accel change per axis (m/s²)
+//   activeAxes   — number of axes whose delta exceeds 0.3 m/s²
+void   sleepDetectorFeed(float dx, float dy, float dz, int activeAxes);
 
 // Current assessment
 String sleepDetectorGetQuality();    // "Deep Sleep", "Light Sleep", "Restless", "Awake"

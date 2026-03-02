@@ -67,3 +67,17 @@ bool mpuMovementDetected(float threshold) {
     float dz = fabsf(az - lastAz);
     return (dx > threshold || dy > threshold || dz > threshold);
 }
+
+// Per-axis deltas (absolute difference from previous reading)
+float mpuGetDeltaX() { return fabsf(ax - lastAx); }
+float mpuGetDeltaY() { return fabsf(ay - lastAy); }
+float mpuGetDeltaZ() { return fabsf(az - lastAz); }
+
+// Number of axes that changed by more than 0.3 m/s²
+int mpuGetActiveAxes(float threshold) {
+    int count = 0;
+    if (fabsf(ax - lastAx) > threshold) count++;
+    if (fabsf(ay - lastAy) > threshold) count++;
+    if (fabsf(az - lastAz) > threshold) count++;
+    return count;
+}
