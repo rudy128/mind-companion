@@ -1,0 +1,119 @@
+// =============================================================
+// M.I.N.D. Companion — Central Configuration
+// All pin definitions, credentials, timing constants
+// =============================================================
+#ifndef CONFIG_H
+#define CONFIG_H
+
+#include <Arduino.h>
+
+// ========================= WiFi =========================
+#define WIFI_SSID          "Chanpreet"
+#define WIFI_PASSWORD      "chanpreet09"
+#define WIFI_RETRY_MAX     30        // max connection attempts
+
+// ========================= OpenAI API =========================
+// !! In production, move this to a secrets file that is .gitignored !!
+#define OPENAI_API_KEY     "sk-proj-key"
+
+// ========================= I2C Bus =========================
+#define I2C_SDA            47
+#define I2C_SCL            48
+#define MPU_ADDRESS        0x69     // MPU6050 AD0 pulled high
+
+// ========================= TFT Display (ILI9341, Software SPI) =========================
+#define TFT_CS             39
+#define TFT_RST            40
+#define TFT_DC             42
+#define TFT_MOSI           2
+#define TFT_SCK            1
+
+// ========================= MAX30102/30105 Heart Rate =========================
+// Uses shared I2C bus (GPIO47/48) — default I2C address 0x57
+
+// ========================= GSR Sensor =========================
+#define GSR_PIN            3        // ADC input
+#define GSR_ADC_MAX        4095.0f
+#define GSR_R_REF          10000.0f // reference resistor in voltage divider
+#define GSR_SAMPLES        10       // number of ADC samples to average
+
+// ========================= Emergency Button =========================
+#define BUTTON_PIN         41       // active LOW with internal pull-up
+
+// ========================= LED Strip (Breathing Pattern) =========================
+#define LED_PIN            20       // PWM output via PNP transistor
+#define LED_PWM_FREQ       5000
+#define LED_PWM_RESOLUTION 8        // 8-bit → 0-255
+
+// ========================= Vibration Motor =========================
+#define VIBRATION_PIN      46
+
+// ========================= Microphone (INMP441 via I2S #0 RX) =========================
+#define MIC_I2S_PORT       I2S_NUM_0
+#define MIC_I2S_SCK        45
+#define MIC_I2S_WS         38
+#define MIC_I2S_SD         19
+#define MIC_SAMPLE_RATE    16000
+#define MIC_RECORD_SECONDS 2
+
+// ========================= Speaker (MAX98357A via I2S #1 TX) =========================
+#define SPK_I2S_PORT       I2S_NUM_1
+#define SPK_I2S_BCLK       21
+#define SPK_I2S_LRC        0          // GPIO0 — boot pin (has 10k pull-down, drive strength boosted in speakerInit)
+#define SPK_I2S_DIN        14
+#define SPK_SD_PIN         -1          // MAX98357A SD (shutdown) pin — set to actual GPIO if wired, -1 if tied HIGH
+#define SPK_SAMPLE_RATE    22050
+
+// ========================= Camera (ESP32-S3 built-in OV2640) =========================
+#define CAM_PIN_PWDN       -1
+#define CAM_PIN_RESET      -1
+#define CAM_PIN_XCLK       15
+#define CAM_PIN_SIOD       4
+#define CAM_PIN_SIOC       5
+#define CAM_PIN_D0         11
+#define CAM_PIN_D1         9
+#define CAM_PIN_D2         8
+#define CAM_PIN_D3         10
+#define CAM_PIN_D4         12
+#define CAM_PIN_D5         18
+#define CAM_PIN_D6         17
+#define CAM_PIN_D7         16
+#define CAM_PIN_VSYNC      6
+#define CAM_PIN_HREF       7
+#define CAM_PIN_PCLK       13
+
+// ========================= Timing Intervals (ms) =========================
+#define INTERVAL_GSR_CHECK       1000UL       // GSR stress reading — 1s
+#define INTERVAL_MPU_DISPLAY     1000UL       // MPU accel on TFT — 1s
+#define INTERVAL_SPEECH_RECOG    15000UL      // speech recognition cycle
+#define INTERVAL_VIBRATION_HOUR  60000UL      // 1 minute vibration reminder
+#define INTERVAL_AWAKE_NUDGE     60000UL      // vibrate + open camera every 1 min while awake
+#define INTERVAL_SLEEP_WINDOW    30000UL      // sleep quality evaluation window
+#define INTERVAL_DASHBOARD_POLL  2000UL       // web dashboard AJAX poll (JS-side uses 1000ms now)
+#define INTERVAL_DISPLAY_UPDATE  1000UL       // RTC time on TFT
+
+// ========================= Thresholds =========================
+#define MOVEMENT_THRESHOLD       0.2f   // g-force delta for "movement detected"
+#define SLEEP_MOVEMENT_DEEP      0.3f   // below this = deep sleep
+#define SLEEP_MOVEMENT_LIGHT     0.8f   // below this = light sleep; above = restless
+#define HR_ABNORMAL_HIGH         120    // BPM above this triggers breathing LED
+#define HR_ABNORMAL_LOW          50     // BPM below this triggers breathing LED
+#define NO_MOVEMENT_EMERGENCY_MS 40000  // 40 seconds → speaker alarm
+//#define GSR_HIGH_THRESHOLD       24000.0f
+//#define GSR_MODERATE_LOW         14000.0f
+//#define GSR_LOW_THRESHOLD         7900.0f
+#define GSR_WEAR_THRESHOLD      8000.0f
+#define GSR_LOW_THRESHOLD       4000.0f
+#define GSR_MODERATE_THRESHOLD  2000.0f
+// ========================= Motivational Quotes =========================
+#define NUM_QUOTES 6
+static const char* QUOTES[NUM_QUOTES] = {
+    "Take a deep breath",
+    "This feeling will pass",
+    "Slow down, you got this",
+    "You are stronger than you think",
+    "One step at a time",
+    "It's okay to ask for help"
+};
+
+#endif // CONFIG_H
