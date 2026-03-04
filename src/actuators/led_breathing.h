@@ -1,5 +1,5 @@
 // =============================================================
-// LED Breathing Pattern — 4× LEDs via PWM
+// LED Breathing Pattern — 4× LEDs via simple ON/OFF toggle
 // =============================================================
 #ifndef LED_BREATHING_H
 #define LED_BREATHING_H
@@ -9,9 +9,9 @@
 void ledBreathingInit();
 
 // Non-blocking breathing: call every loop iteration while active.
-// Returns true while the breathing cycle is still running.
-// A full cycle = one inhale (fade-in) + one exhale (fade-out).
-// Call ledBreathingStart(cycles) to begin.
+// Toggles the LED every 4 seconds (ON phase = 4s, OFF phase = 4s).
+// One cycle = one ON+OFF pair (8 seconds total).
+// ledBreathingStart(cycles) — pass 0 for infinite, or N to auto-stop after N cycles.
 void ledBreathingStart(int cycles = 3);
 bool ledBreathingUpdate();   // returns true if still breathing
 void ledBreathingStop();

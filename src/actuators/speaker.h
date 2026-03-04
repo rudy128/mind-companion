@@ -7,7 +7,13 @@
 #include <Arduino.h>
 
 void speakerInit();         // configure I2S #1 in TX mode
-void speakerPlayTone(float freqHz, unsigned long durationMs); // simple test tone
+void speakerTest();         // blocking 3-tone test — call once in setup() to verify hardware
+void speakerPlayTone(float freqHz, unsigned long durationMs); // simple sine tone
+void speakerPlayRaw(const uint8_t* pcmData, size_t pcmBytes); // play raw 16-bit PCM buffer (TTS)
+
+// Flag set by openaiSpeak() while TTS is streaming.
+// Alarm/buzzer update functions poll this to avoid I2S collisions.
+extern volatile bool speakerTTSPlaying;
 
 // Play a short beep sequence to indicate status
 void speakerBeepOK();       // two short beeps

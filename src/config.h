@@ -62,6 +62,7 @@
 #define SPK_I2S_LRC        0
 #define SPK_I2S_DIN        14
 #define SPK_SAMPLE_RATE    22050
+#define SPK_SD_PIN         -1 
 
 // ========================= Camera (ESP32-S3 built-in OV2640) =========================
 #define CAM_PIN_PWDN       -1
@@ -98,9 +99,12 @@
 #define HR_ABNORMAL_HIGH         120    // BPM above this triggers breathing LED
 #define HR_ABNORMAL_LOW          50     // BPM below this triggers breathing LED
 #define NO_MOVEMENT_EMERGENCY_MS 40000  // 40 seconds → speaker alarm
-#define GSR_HIGH_THRESHOLD       24000.0f
-#define GSR_MODERATE_LOW         14000.0f
-#define GSR_LOW_THRESHOLD         7900.0f
+//#define GSR_HIGH_THRESHOLD       24000.0f
+//#define GSR_MODERATE_LOW         14000.0f
+//#define GSR_LOW_THRESHOLD         7900.0f
+#define GSR_WEAR_THRESHOLD      8000.0f
+#define GSR_LOW_THRESHOLD       4000.0f
+#define GSR_MODERATE_THRESHOLD  2000.0f
 // ========================= Motivational Quotes =========================
 #define NUM_QUOTES 6
 static const char* QUOTES[NUM_QUOTES] = {

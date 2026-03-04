@@ -9,21 +9,7 @@ void gsrInit() {
     pinMode(GSR_PIN, INPUT);
     Serial.println("[GSR] Initialized on GPIO" + String(GSR_PIN));
 }
-/*
-float gsrReadConductance() {
-    long sum = 0;
-    for (int i = 0; i < GSR_SAMPLES; i++) {
-        sum += analogRead(GSR_PIN);
-    }
-    float avg = sum / (float)GSR_SAMPLES;
-    if (avg < 1) avg = 1; // prevent division by zero
 
-    // The voltage divider formula gives a value that increases
-    // with skin conductance: higher ADC → more sweat → higher value.
-    return GSR_R_REF * (GSR_ADC_MAX / avg - 1.0f);
-    
-}
-    */
    float gsrReadConductance() {
     long sum = 0;
     for (int i = 0; i < GSR_SAMPLES; i++) {
@@ -42,9 +28,15 @@ float gsrReadConductance() {
     return resistance;   // Lower value = more sweat
 }
 
+   
+
 String gsrGetStressLevel(float c) {
-    if (c > GSR_HIGH_THRESHOLD)       return "High";
-    if (c >= GSR_MODERATE_LOW)        return "Moderate";
-    if (c >= GSR_LOW_THRESHOLD)       return "Low";
-    return "Please wear finger band";
+    //if (c > GSR_HIGH_THRESHOLD)       return "High";
+    //if (c >= GSR_MODERATE_LOW)        return "Moderate";
+    //if (c >= GSR_LOW_THRESHOLD)       return "Low";
+    //return "Please wear finger band";
+    if (c > GSR_WEAR_THRESHOLD)          return "Please wear finger straps";
+    if (c >= GSR_LOW_THRESHOLD)          return "Low";
+    if (c >= GSR_MODERATE_THRESHOLD)     return "Moderate";
+    return "High";
 }

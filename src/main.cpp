@@ -66,6 +66,10 @@ static unsigned long lastAwakeNudge    = 0;   // last awake-nudge vibration
 // ─── Emergency state ───────────────────────────────────────
 static bool emergencyFlag = false;
 
+// ─── TTS quote pending (set on Core 1, consumed on Core 0) ─
+static volatile bool pendingTTSFlag     = false;
+static char          pendingTTSText[96] = "";
+
 // ─── Sensor-available flags (graceful degradation) ─────────
 static bool hasHeartRate = false;
 static bool hasMPU       = false;
@@ -128,6 +132,7 @@ void setup() {
 
     // ── Speaker ──────────────────────────────────────────
     speakerInit();
+    speakerTest();   // ← plays 3 tones at full volume; remove once speaker is confirmed working
 
     // ── Microphone ───────────────────────────────────────
     micInit();
@@ -180,12 +185,12 @@ void setup() {
     lastAwakeNudge     = now;
 
     // ── Speech task on Core 0 ────────────────────────────
-    // Stack 8 KB — enough for HTTP + JSON parsing
+    // Stack 48 KB — Audio lib + HTTPClient + LittleFS + TLS need ~40 KB minimum
     // Priority 1 (low) so Core 0 WiFi/BT tasks stay healthy
     xTaskCreatePinnedToCore(
         speechTask,         // function
         "speech",           // name
-        8192,               // stack bytes
+        49152,              // stack bytes (48 KB)
         nullptr,            // param
         1,                  // priority
         &speechTaskHandle,  // handle
@@ -208,51 +213,72 @@ static void speechTask(void* param) {
 
         if (!wifiIsConnected()) continue;
 
+        // Verify the TCP/IP stack is actually healthy (DNS probe).
+        // After an SSL abort WiFi stays "connected" but DNS dies.
+        if (!wifiEnsureConnected()) {
+            LOG_WARN("SPEECH", "WiFi stack dead — skipping cycle");
+            continue;
+        }
+
         speechBusy = true;
-        LOG_INFO("SPEECH", "Recording %d s...", MIC_RECORD_SECONDS);
+        LOG_INFO("SPEECH", "--- CYCLE START --- WiFi=%s heap=%lu",
+                 wifiIsConnected() ? "OK" : "DOWN", esp_get_free_heap_size());
+        LOG_INFO("SPEECH", "Recording %d s (buf=%u bytes)...", MIC_RECORD_SECONDS, sizeof(audioBuffer));
 
         tftShowListening(true);
         size_t bytesRead = micRecord(audioBuffer, sizeof(audioBuffer));
         tftShowListening(false);
+
+        LOG_INFO("SPEECH", "micRecord returned %u bytes (expected %u)",
+                 bytesRead, sizeof(audioBuffer));
+
         if (bytesRead > 0) {
             size_t   pcmSize = bytesRead;
             size_t   wavSize = pcmSize + 44;
+            LOG_INFO("SPEECH", "Allocating WAV buffer %u bytes...", wavSize);
             uint8_t* wavData = (uint8_t*)malloc(wavSize);
 
             if (wavData) {
+                LOG_INFO("SPEECH", "malloc OK — building WAV header and copying PCM");
                 micCreateWavHeader(wavData, pcmSize, MIC_SAMPLE_RATE);
                 memcpy(wavData + 44, audioBuffer, pcmSize);
 
-                LOG_INFO("SPEECH", "Sending %u bytes to OpenAI...", wavSize);
+                LOG_INFO("SPEECH", "Sending %u bytes to OpenAI Whisper...", wavSize);
                 String transcript = openaiTranscribe(wavData, wavSize);
                 free(wavData);
+                LOG_INFO("SPEECH", "OpenAI returned: \"%s\" (len=%u)",
+                         transcript.c_str(), transcript.length());
 
                 if (transcript.length() > 0) {
-                    LOG_INFO("SPEECH", "Voice: %s", transcript.c_str());
-                    // tftUpdateSpeechStatus touches the TFT — must be safe to call
-                    // from Core 0. ILI9341 SPI is only driven from here + Core 1
-                    // setup; by this point setup() is done so it's single-writer.
                     tftUpdateSpeechStatus(transcript);
                     dashState.lastVoiceCommand = transcript;
 
+                    LOG_INFO("SPEECH", "Parsing command from transcript...");
                     VoiceCommand cmd = commandParse(transcript);
+                    LOG_INFO("SPEECH", "Command parsed: %s (%d)", commandToString(cmd).c_str(), (int)cmd);
+
                     switch (cmd) {
                         case CMD_BREATHING_PATTERN:
-                            LOG_INFO("SPEECH", "→ breathing LED");
+                            LOG_INFO("SPEECH", "→ CMD_BREATHING_PATTERN: calling ledBreathingStart(5)");
                             ledBreathingStart(5);
+                            LOG_INFO("SPEECH", "→ ledBreathingStart done, isActive=%s",
+                                     ledBreathingIsActive() ? "true" : "false");
                             break;
                         case CMD_HELP_ME:
                         case CMD_EMERGENCY:
-                            LOG_WARN("SPEECH", "→ voice emergency!");
+                            LOG_WARN("SPEECH", "→ CMD_EMERGENCY: calling speakerAlarmStart()");
                             speakerAlarmStart();
                             tftUpdateEmergency(true);
                             dashState.emergencyActive = true;
                             emergencyFlag = true;
+                            LOG_WARN("SPEECH", "→ Emergency active, alarm started");
                             break;
                         case CMD_HOW_AM_I:
+                            LOG_INFO("SPEECH", "→ CMD_HOW_AM_I: calling speakerBeepOK()");
                             speakerBeepOK();
                             break;
                         case CMD_STOP:
+                            LOG_INFO("SPEECH", "→ CMD_STOP: stopping LED + alarm + emergency");
                             ledBreathingStop();
                             speakerAlarmStop();
                             tftUpdateEmergency(false);
@@ -260,19 +286,40 @@ static void speechTask(void* param) {
                             emergencyFlag = false;
                             break;
                         default:
+                            LOG_DEBUG("SPEECH", "→ CMD_NONE — no keyword matched");
                             break;
                     }
                 } else {
-                    LOG_DEBUG("SPEECH", "No transcript returned");
+                    LOG_WARN("SPEECH", "OpenAI returned empty transcript — nothing to parse");
                 }
             } else {
-                LOG_ERROR("SPEECH", "malloc failed for WAV buffer (%u bytes)", wavSize);
+                LOG_ERROR("SPEECH", "malloc FAILED for WAV buffer (%u bytes) — heap=%lu",
+                          wavSize, esp_get_free_heap_size());
             }
         } else {
-            LOG_WARN("SPEECH", "micRecord returned 0 bytes");
+            LOG_WARN("SPEECH", "micRecord returned 0 bytes — skipping OpenAI call");
         }
 
+        LOG_INFO("SPEECH", "--- CYCLE END --- heap=%lu", esp_get_free_heap_size());
         speechBusy = false;
+
+        // ── TTS queue — speak any pending motivational quote ──
+        // Loop so that if GSR queues a new quote *while* TTS was streaming,
+        // it plays immediately rather than waiting a full 15-s speech cycle.
+        while (pendingTTSFlag && wifiEnsureConnected()) {
+            pendingTTSFlag = false;   // clear before network call so Core 1 can re-queue
+            LOG_INFO("SPEECH", "TTS pending — speaking: \"%s\"", pendingTTSText);
+            bool alarmWasActive = speakerAlarmIsActive();  // true only if emergency alarm is on
+            if (alarmWasActive) speakerAlarmStop();        // silence it so TTS is audible
+            openaiSpeak(pendingTTSText);
+            LOG_INFO("SPEECH", "TTS done");
+            if (alarmWasActive) {
+                LOG_INFO("SPEECH", "Restoring emergency alarm after TTS");
+                speakerAlarmStart();
+            }
+            // Brief yield between back-to-back TTS calls
+            vTaskDelay(pdMS_TO_TICKS(200));
+        }
     }
 }
 
@@ -433,7 +480,7 @@ prevButtonState = buttonPressed;
             // ── Awake nudge — vibrate + open camera every 60 s ───
             // Tracks how long the child has been continuously awake.
             // Resets the awake-start timer as soon as they fall asleep.
-            if (sq == "Awake") {
+            /*if (sq == "Awake") {
                 if (now - lastAwakeNudge >= INTERVAL_AWAKE_NUDGE) {
                     lastAwakeNudge = now;
                     unsigned long awakeSeconds = (now - awakeStartTime) / 1000UL;
@@ -446,19 +493,73 @@ prevButtonState = buttonPressed;
                 awakeStartTime = now;
                 lastAwakeNudge = now;
                 dashState.cameraOpen = false;
-            }
+            }*/
+           // ── State-based vibration + camera control ─────────────
+        // ── Awake 1-minute trigger: vibration + camera ─────────────
+        if (sq == "Awake") {
+
+        // Start timer when user first becomes awake
+        if (awakeStartTime == 0) {
+        awakeStartTime = now;
         }
+
+        // Only trigger after 1 minute of continuous awake
+        if ((now - awakeStartTime >= 60000UL) && !dashState.cameraOpen) {
+        LOG_INFO("MAIN", "User awake ≥ 1 min — Vibrating + Camera ON");
+        vibrationPulse(1000);        // Vibrate motor
+        dashState.cameraOpen = true; // Turn camera ON
+    }
+
+    } 
+    else {  // Light Sleep / Deep Sleep
+
+    // Reset awake timer & camera
+    awakeStartTime = 0;
+    if (dashState.cameraOpen) {
+        LOG_INFO("MAIN", "User sleeping — Camera OFF");
+        dashState.cameraOpen = false;
+    }
+    }
+}
+        
 
         // ── GSR Stress ────────────────────────────────────
         float  conductance = gsrReadConductance();
         String stress      = gsrGetStressLevel(conductance);
-        tftUpdateStress(stress, conductance); // change-guarded inside
+        tftUpdateStress(stress, conductance);
         dashState.gsrValue    = conductance;
         dashState.stressLevel = stress;
-        LOG_DEBUG("GSR", "C=%.0f => %s", conductance, stress.c_str());
+
+        // Log every reading so we can see raw values vs thresholds
+        LOG_INFO("GSR", "raw=%.1f  level=\"%s\"  thresholds: WEAR>%.0f LOW>=%.0f MOD>=%.0f HIGH=<%.0f",
+                 conductance, stress.c_str(),
+                 (float)GSR_WEAR_THRESHOLD,
+                 (float)GSR_LOW_THRESHOLD,
+                 (float)GSR_MODERATE_THRESHOLD,
+                 (float)GSR_MODERATE_THRESHOLD);
+
+        // ── GSR High-stress → TTS motivational quote only ──
+        // GSR no longer triggers the alarm — it only queues a spoken quote.
+        // The alarm is reserved for the emergency button (CMD_EMERGENCY).
+        if (stress == "High") {
+            LOG_WARN("GSR", "HIGH STRESS DETECTED (%.1f < %.0f)",
+                     conductance, (float)GSR_MODERATE_THRESHOLD);
+            // Don't queue while TTS is actively streaming — wait for next reading
+            if (speakerTTSPlaying) {
+                LOG_DEBUG("GSR", "→ TTS streaming, deferring queue until done");
+            } else if (!pendingTTSFlag) {
+                int idx = random(0, NUM_QUOTES);
+                strncpy(pendingTTSText, QUOTES[idx], sizeof(pendingTTSText) - 1);
+                pendingTTSText[sizeof(pendingTTSText) - 1] = '\0';
+                pendingTTSFlag = true;
+                LOG_INFO("GSR", "TTS queued [%d]: \"%s\"", idx, pendingTTSText);
+            } else {
+                LOG_DEBUG("GSR", "TTS already pending, skipping queue");
+            }
+        }
 
         // ── Hourly vibration reminder ─────────────────────
-        if (now - lastVibrationTime >= INTERVAL_VIBRATION_HOUR) {
+        /*if (now - lastVibrationTime >= INTERVAL_VIBRATION_HOUR) {
             if (!sleepDetectorIsSleeping()) {
                 LOG_INFO("MAIN", "Hourly vibration reminder");
                 vibrationPulse(1000);
@@ -466,7 +567,7 @@ prevButtonState = buttonPressed;
                 LOG_INFO("MAIN", "Skipping vibration — user is sleeping");
             }
             lastVibrationTime = now;
-        }
+        }*/
     }
 
     // ── yield — lets WiFi/BT stack run between iterations ─
