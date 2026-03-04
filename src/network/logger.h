@@ -1,14 +1,8 @@
 // =============================================================
 // Centralized Logger — M.I.N.D. Companion
 // =============================================================
-// Usage:
-//   LOG_INFO("HR", "Finger detected, IR=%ld", irValue);
-//   LOG_WARN("GSR", "Reading near zero: %.1f", val);
-//   LOG_ERROR("MPU", "Sensor not found!");
-//   LOG_DEBUG("HR", "BPM=%.1f delta=%ld", bpm, delta);
-//
-// All entries go to Serial AND are kept in a ring buffer
-// that is served at http://<ESP_IP>/api/logs
+// Lightweight: Serial only, no RAM ring buffer.
+// Use the serial debugger to view output.
 // =============================================================
 #ifndef LOGGER_H
 #define LOGGER_H
@@ -23,10 +17,6 @@ typedef enum {
     LOG_LEVEL_ERROR = 3
 } LogLevel;
 
-// ── Ring buffer size (number of log lines kept in RAM) ───────
-#define LOG_BUFFER_ENTRIES  80
-#define LOG_MAX_MSG_LEN     120
-
 // ── Public API ───────────────────────────────────────────────
 
 // Call once in setup() before anything else
@@ -35,14 +25,7 @@ void logInit(LogLevel minLevel = LOG_LEVEL_DEBUG);
 // Core log function (use macros below instead)
 void logWrite(LogLevel level, const char* tag, const char* fmt, ...);
 
-// Return all buffered log entries as a JSON array string
-// Caller is responsible for the returned String's lifetime
-String logGetJSON();
-
-// Clear the ring buffer
-void logClear();
-
-// Change minimum level at runtime (e.g. from dashboard)
+// Change minimum level at runtime
 void logSetLevel(LogLevel level);
 
 // ── Convenience macros ───────────────────────────────────────

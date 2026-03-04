@@ -4,7 +4,6 @@
 #include "openai_api.h"
 #include "../config.h"
 #include "../actuators/speaker.h"
-#include "../network/logger.h"
 #include "../network/wifi_manager.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -16,16 +15,43 @@
 
 #define TTS_WAV_PATH  "/tts_out.wav"
 
-
-String openaiTranscribe(uint8_t* wavData, size_t wavSize) {
+// =============================================================
+//  openaiTranscribe — streaming upload (no 64 KB malloc copy)
+//
+//  Creates a FRESH WiFiClientSecure each call to avoid the
+//  "Bad file number" (errno 9) bug from reusing a stopped client.
+//  The ~40KB TLS allocation is freed when the function returns.
+// =============================================================
+String openaiTranscribe(int16_t* pcmData, size_t pcmBytes) {
     WiFiClientSecure client;
-    client.setInsecure();  // skip certificate verification on ESP32
+    client.setInsecure();
+    client.setTimeout(10);    // 10-second TLS handshake timeout
 
     Serial.println("[AI] Connecting to api.openai.com...");
     if (!client.connect("api.openai.com", 443)) {
-        Serial.println("[AI] Connection failed!");
+        Serial.println("[AI] Connection failed");
         return "";
     }
+
+    // Build the 44-byte WAV header on the stack
+    uint8_t wavHeader[44];
+    {
+        uint32_t fileSize = pcmBytes + 36;
+        memcpy(wavHeader,      "RIFF", 4);
+        *(uint32_t*)(wavHeader + 4)  = fileSize;
+        memcpy(wavHeader + 8,  "WAVEfmt ", 8);
+        *(uint32_t*)(wavHeader + 16) = 16;
+        *(uint16_t*)(wavHeader + 20) = 1;               // PCM
+        *(uint16_t*)(wavHeader + 22) = 1;               // mono
+        *(uint32_t*)(wavHeader + 24) = MIC_SAMPLE_RATE;
+        *(uint32_t*)(wavHeader + 28) = MIC_SAMPLE_RATE * 2;
+        *(uint16_t*)(wavHeader + 32) = 2;
+        *(uint16_t*)(wavHeader + 34) = 16;
+        memcpy(wavHeader + 36, "data", 4);
+        *(uint32_t*)(wavHeader + 40) = pcmBytes;
+    }
+
+    size_t wavTotalSize = 44 + pcmBytes;   // total file size for Content-Length
 
     String boundary  = "----ESP32Boundary";
     String bodyStart = "--" + boundary + "\r\n"
@@ -36,7 +62,7 @@ String openaiTranscribe(uint8_t* wavData, size_t wavSize) {
                        "Content-Type: audio/wav\r\n\r\n";
     String bodyEnd   = "\r\n--" + boundary + "--\r\n";
 
-    size_t contentLength = bodyStart.length() + wavSize + bodyEnd.length();
+    size_t contentLength = bodyStart.length() + wavTotalSize + bodyEnd.length();
 
     // HTTP headers
     client.print("POST /v1/audio/transcriptions HTTP/1.1\r\n");
@@ -45,29 +71,41 @@ String openaiTranscribe(uint8_t* wavData, size_t wavSize) {
     client.print("Content-Type: multipart/form-data; boundary=" + boundary + "\r\n");
     client.print("Content-Length: " + String(contentLength) + "\r\n\r\n");
 
-    // Body
+    // Body — multipart preamble
     client.print(bodyStart);
-    size_t chunkSize = 1024;
-    for (size_t i = 0; i < wavSize; i += chunkSize) {
-        size_t len = min(chunkSize, wavSize - i);
-        client.write(wavData + i, len);
-        esp_task_wdt_reset();   // keep WDT happy during multi-second upload
+
+    // WAV header (44 bytes)
+    client.write(wavHeader, 44);
+    esp_task_wdt_reset();
+
+    // Stream PCM data directly from audioBuffer — no copy needed
+    const size_t chunkSize = 1024;
+    const uint8_t* rawBytes = (const uint8_t*)pcmData;
+    for (size_t i = 0; i < pcmBytes; i += chunkSize) {
+        size_t len = min(chunkSize, pcmBytes - i);
+        client.write(rawBytes + i, len);
+        esp_task_wdt_reset();
         vTaskDelay(1);
     }
+
+    // Multipart epilogue
     client.print(bodyEnd);
 
-    // Read response (skip HTTP headers, find JSON body)
-    String response = "";
+    // Read response in chunks (not char-by-char which is O(n²) on String)
+    String response;
+    response.reserve(512);
+    uint8_t readBuf[256];
     unsigned long timeout = millis();
-    bool headersEnded = false;
-    while (client.connected() && millis() - timeout < 10000) {
-        while (client.available()) {
-            char c = client.read();
-            response += c;
-            timeout = millis();
+    while (client.connected() && millis() - timeout < 15000) {
+        int avail = client.available();
+        if (avail > 0) {
+            int toRead = min(avail, (int)sizeof(readBuf));
+            int got = client.read(readBuf, toRead);
+            if (got > 0) {
+                response.concat((const char*)readBuf, got);
+                timeout = millis();   // reset timeout on data received
+            }
         }
-        // Yield to FreeRTOS scheduler so IDLE0 can run and feed the
-        // task watchdog.  Without this the ~10s HTTP wait triggers WDT.
         esp_task_wdt_reset();
         vTaskDelay(1);
     }
@@ -100,20 +138,20 @@ String openaiTranscribe(uint8_t* wavData, size_t wavSize) {
 //  play back with Audio library (exactly like the reference sketch)
 // =============================================================
 bool openaiSpeak(const char* text) {
-    LOG_INFO("AI-TTS", "speak() → \"%s\"", text);
+    Serial.printf("[AI-TTS] speak() → \"%s\"\n", text);
 
-    // ── 0. Verify WiFi/DNS is healthy before touching HTTPClient ─
+    // ── 0. Verify WiFi is up before touching HTTPClient ─
     if (!wifiEnsureConnected()) {
-        LOG_ERROR("AI-TTS", "WiFi not ready — aborting TTS");
+        Serial.println("[AI-TTS] WiFi not ready — aborting TTS");
         return false;
     }
 
     // ── 1. Mount LittleFS ─────────────────────────────────
     if (!LittleFS.begin(false)) {
-        LOG_WARN("AI-TTS", "LittleFS mount failed — formatting...");
+        Serial.println("[AI-TTS] LittleFS mount failed — formatting...");
         LittleFS.format();
         if (!LittleFS.begin(false)) {
-            LOG_ERROR("AI-TTS", "LittleFS init failed");
+            Serial.println("[AI-TTS] LittleFS init failed");
             return false;
         }
     }
@@ -124,7 +162,7 @@ bool openaiSpeak(const char* text) {
     http.addHeader("Content-Type",  "application/json");
     http.addHeader("Authorization", String("Bearer ") + OPENAI_API_KEY);
 
-    StaticJsonDocument<256> doc;
+    JsonDocument doc;
     doc["model"]  = "tts-1";
     doc["voice"]  = "alloy";
     doc["input"]  = text;
@@ -132,12 +170,11 @@ bool openaiSpeak(const char* text) {
     String body;
     serializeJson(doc, body);
 
-    LOG_INFO("AI-TTS", "POST /v1/audio/speech ...");
+    Serial.println("[AI-TTS] POST /v1/audio/speech ...");
     int code = http.POST(body);
-    LOG_INFO("AI-TTS", "HTTP response: %d", code);
-
+    Serial.printf("[AI-TTS] HTTP %d\n", code);
     if (code != 200) {
-        LOG_ERROR("AI-TTS", "Bad HTTP code %d — aborting", code);
+        Serial.printf("[AI-TTS] Bad HTTP code %d\n", code);
         http.end();
         return false;
     }
@@ -146,7 +183,7 @@ bool openaiSpeak(const char* text) {
     LittleFS.remove(TTS_WAV_PATH);
     File f = LittleFS.open(TTS_WAV_PATH, FILE_WRITE);
     if (!f) {
-        LOG_ERROR("AI-TTS", "Cannot open %s for writing", TTS_WAV_PATH);
+        Serial.println("[AI-TTS] Cannot open file for writing");
         http.end();
         return false;
     }
@@ -155,16 +192,18 @@ bool openaiSpeak(const char* text) {
     f.close();
     http.end();
 
-    LOG_INFO("AI-TTS", "WAV saved: %s  bytes=%u", TTS_WAV_PATH, bytesWritten);
+    Serial.printf("[AI-TTS] WAV saved: %u bytes\n", bytesWritten);
 
     if (bytesWritten == 0) {
-        LOG_ERROR("AI-TTS", "Nothing written to LittleFS — aborting");
+        Serial.println("[AI-TTS] Nothing written — aborting");
         return false;
     }
 
     // ── 4. Play with Audio library ────────────────────────
     // The Audio lib installs its own I2S driver. We must uninstall the
     // one from speakerInit() first, then reinstall it after playback.
+    // Hold the I2S mutex so Core 1 alarm/buzzer don't collide.
+    if (speakerI2SMutex) xSemaphoreTake(speakerI2SMutex, portMAX_DELAY);
     speakerTTSPlaying = true;
     i2s_driver_uninstall(SPK_I2S_PORT);   // hand I2S port to Audio lib
 
@@ -173,7 +212,7 @@ bool openaiSpeak(const char* text) {
     ttsAudio.setVolume(21);
     ttsAudio.connecttoFS(LittleFS, TTS_WAV_PATH);
 
-    LOG_INFO("AI-TTS", "Playing %s ...", TTS_WAV_PATH);
+    Serial.println("[AI-TTS] Playing WAV...");
     while (ttsAudio.isRunning()) {
         ttsAudio.loop();
         esp_task_wdt_reset();
@@ -183,6 +222,7 @@ bool openaiSpeak(const char* text) {
     // Audio destructor releases I2S — now reinstall our own driver
     speakerInit();   // restores I2S_NUM_1 at SPK_SAMPLE_RATE for alarm/buzzer
     speakerTTSPlaying = false;
-    LOG_INFO("AI-TTS", "Playback done");
+    if (speakerI2SMutex) xSemaphoreGive(speakerI2SMutex);
+    Serial.println("[AI-TTS] Playback done");
     return true;
 }

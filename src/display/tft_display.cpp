@@ -200,13 +200,13 @@ void tftUpdateStress(const String& level, float gsrValue) {
     tft.fillRect(0, Y_STRESS_VAL, 240, 60, ILI9341_BLACK);
 
     // Explicitly handle the 'not worn' message returned by the GSR logic
-    if (level == "Please wear finger band") {
+    if (level == "Please wear finger straps") {
         tft.setTextColor(ILI9341_RED);
         tft.setTextSize(2);            // size 2 = 12px/char wide, 16px tall
         tft.setCursor(10, Y_STRESS_VAL);
         tft.println("Please wear");
         tft.setCursor(10, Y_STRESS_VAL + 22);
-        tft.println("finger band!");
+        tft.println("finger straps!");
     }
     else if (level == "High") {
         tft.setTextSize(2);

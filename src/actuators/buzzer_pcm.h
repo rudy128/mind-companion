@@ -1,7 +1,8 @@
 #pragma once
 #include <stdint.h>
+#include <pgmspace.h>
 
-const int16_t BUZZER_PCM[] = {
+const int16_t BUZZER_PCM[] PROGMEM = {
   20041, 20294, 21321, 21574, 13, 0, 24908, 26230, 12854, 13102, 12590, 12336, 0, 24932, 24948, 22664,
   1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

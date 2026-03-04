@@ -5,6 +5,7 @@
 #define SPEAKER_H
 
 #include <Arduino.h>
+#include <freertos/semphr.h>
 
 void speakerInit();         // configure I2S #1 in TX mode
 void speakerTest();         // blocking 3-tone test — call once in setup() to verify hardware
@@ -14,6 +15,10 @@ void speakerPlayRaw(const uint8_t* pcmData, size_t pcmBytes); // play raw 16-bit
 // Flag set by openaiSpeak() while TTS is streaming.
 // Alarm/buzzer update functions poll this to avoid I2S collisions.
 extern volatile bool speakerTTSPlaying;
+
+// I2S mutex — protects SPK_I2S_PORT from concurrent Core 0 / Core 1 access.
+// Created in speakerInit(). openaiSpeak() must hold this while it owns I2S.
+extern SemaphoreHandle_t speakerI2SMutex;
 
 // Play a short beep sequence to indicate status
 void speakerBeepOK();       // two short beeps

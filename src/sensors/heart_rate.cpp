@@ -100,10 +100,9 @@ void heartRateUpdate() {
                 lastBeat = millis();
                 float currentBPM = 60.0f / (delta / 1000.0f);
 
-                LOG_DEBUG("HR", "Beat! delta=%ldms raw_BPM=%.1f", delta, currentBPM);
-
                 // Sane physiological range
                 if (currentBPM > 20 && currentBPM < 255) {
+                    LOG_DEBUG("HR", "Beat! delta=%ldms raw_BPM=%.1f", delta, currentBPM);
                     rates[rateSpot++] = (byte)currentBPM;
                     rateSpot %= RATE_SIZE;
 
@@ -117,7 +116,9 @@ void heartRateUpdate() {
                         LOG_INFO("HR", "BPM=%.1f  (avg of %d samples, IR=%ld)", averageBPM, cnt, irValue);
                     }
                 } else {
-                    LOG_WARN("HR", "BPM=%.1f out of range [20-255] — discarded", currentBPM);
+                    // Out of range — silently discard (happens frequently
+                    // with 400Hz / no hardware averaging; logging every one
+                    // floods Serial and stalls the loop)
                 }
             }
         } else {

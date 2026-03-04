@@ -3,7 +3,6 @@
 // =============================================================
 #include "web_server.h"
 #include "../config.h"
-#include "logger.h"
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 
@@ -119,41 +118,7 @@ footer{text-align:center;padding:15px;color:#555;font-size:12px;}
 
 </div>
 
-<footer>M.I.N.D Companion • ESP32-S3 • Dashboard v2.0</footer>
-
-<!-- ═══════════════════════ LIVE LOGS PANEL ═══════════════════════ -->
-<div style="max-width:960px;margin:0 auto 30px auto;padding:0 15px;">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-    <span style="color:#3498db;font-size:18px;">📋 Live Logs</span>
-    <div>
-      <select id="logFilter" onchange="filterLogs()"
-        style="background:#1b0d35;color:#aaa;border:1px solid #333;
-               border-radius:6px;padding:4px 8px;font-size:13px;margin-right:6px;">
-        <option value="ALL">All levels</option>
-        <option value="DEBUG">DEBUG</option>
-        <option value="INFO">INFO</option>
-        <option value="WARN">WARN</option>
-        <option value="ERROR">ERROR</option>
-      </select>
-      <button onclick="clearLogs()"
-        style="background:#c0392b;color:#fff;border:none;border-radius:6px;
-               padding:5px 12px;font-size:13px;cursor:pointer;margin-right:6px;">
-        Clear
-      </button>
-      <button id="pauseBtn" onclick="togglePause()"
-        style="background:#27ae60;color:#fff;border:none;border-radius:6px;
-               padding:5px 12px;font-size:13px;cursor:pointer;">
-        Pause
-      </button>
-    </div>
-  </div>
-  <div id="logBox"
-    style="background:#0d0d1a;border:1px solid #222;border-radius:10px;
-           padding:12px;height:320px;overflow-y:auto;font-family:monospace;
-           font-size:12px;line-height:1.6;">
-    <span style="color:#555;">Waiting for logs...</span>
-  </div>
-</div>
+<footer>M.I.N.D Companion • ESP32-S3 • Dashboard v2.1</footer>
 
 <script>
 // ── Sensor update ─────────────────────────────────────────────
@@ -187,7 +152,7 @@ function update(){
     if (d.camOpen && !camTimer) { openCamera(20); }
   }).catch(e=>console.error(e));
 }
-setInterval(update, 1000);   // 1-second dashboard refresh
+setInterval(update, 3000);   // 3-second dashboard refresh (less TCP pressure)
 update();
 
 function clearEmergency(){
@@ -237,57 +202,6 @@ function triggerVibrate(){
   fetch('/api/vibrate').then(()=>{ openCamera(20); });
 }
 
-// ── Live Logs ─────────────────────────────────────────────────
-let logPaused   = false;
-let lastLogCount = 0;
-const levelColors = {
-  DEBUG: '#6ecff6',
-  INFO:  '#2ecc71',
-  WARN:  '#f1c40f',
-  ERROR: '#e74c3c'
-};
-
-function filterLogs() { refreshLogs(true); }
-
-function refreshLogs(force) {
-  if (logPaused && !force) return;
-  fetch('/api/logs').then(r=>r.json()).then(entries=>{
-    if (!force && entries.length === lastLogCount) return;
-    lastLogCount = entries.length;
-
-    const filter = document.getElementById('logFilter').value;
-    const box    = document.getElementById('logBox');
-    const atBottom = box.scrollHeight - box.clientHeight <= box.scrollTop + 4;
-
-    box.innerHTML = entries
-      .filter(e => filter === 'ALL' || e.lvl === filter)
-      .map(e => {
-        const col  = levelColors[e.lvl] || '#aaa';
-        const ts   = (e.t/1000).toFixed(1).padStart(8,' ');
-        const lvl  = e.lvl.padEnd(5,' ');
-        const tag  = ('['+e.tag+']').padEnd(10,' ');
-        return `<div><span style="color:#555">${ts}s</span> `+
-               `<span style="color:${col};font-weight:bold">${lvl}</span> `+
-               `<span style="color:#aaa">${tag}</span> `+
-               `<span style="color:#e0e0e0">${e.msg}</span></div>`;
-      }).join('') || '<span style="color:#555">No entries at this level.</span>';
-
-    if (atBottom || force) box.scrollTop = box.scrollHeight;
-  }).catch(()=>{});
-}
-
-function clearLogs() {
-  fetch('/api/logs/clear').then(()=>{ lastLogCount=0; refreshLogs(true); });
-}
-
-function togglePause() {
-  logPaused = !logPaused;
-  document.getElementById('pauseBtn').textContent = logPaused ? 'Resume' : 'Pause';
-  document.getElementById('pauseBtn').style.background = logPaused ? '#e67e22' : '#27ae60';
-}
-
-setInterval(()=>refreshLogs(false), 1000);
-refreshLogs(true);
 </script>
 </body>
 </html>
@@ -336,17 +250,6 @@ void webServerInit(DashboardState* state) {
 
     // JSON data endpoint
     server.on("/api/data", HTTP_GET, handleData);
-
-    // Live logs endpoint
-    server.on("/api/logs", HTTP_GET, [](AsyncWebServerRequest* req) {
-        req->send(200, "application/json", logGetJSON());
-    });
-
-    // Clear logs endpoint
-    server.on("/api/logs/clear", HTTP_GET, [](AsyncWebServerRequest* req) {
-        logClear();
-        req->send(200, "text/plain", "OK");
-    });
 
     // Control endpoints
     server.on("/api/breathe", HTTP_GET, [](AsyncWebServerRequest* req) {

@@ -9,19 +9,52 @@
 #include "../network/logger.h"
 #include <esp_task_wdt.h>
 #include <driver/gpio.h>    // gpio_set_drive_capability()
+#include <pgmspace.h>
 
 static bool          alarmActive = false;
 static unsigned long alarmToggle = 0;
 static bool          alarmHigh   = false;   // alternates between two tones
+
+// Pre-computed one-cycle sine buffers for non-blocking alarm
+// 800 Hz @ 22050 Hz sample rate → ~27.5 samples per cycle
+// 1200 Hz @ 22050 Hz sample rate → ~18.4 samples per cycle
+#define ALARM_BUF_800_LEN   28
+#define ALARM_BUF_1200_LEN  18
+static int16_t alarmBuf800[ALARM_BUF_800_LEN];
+static int16_t alarmBuf1200[ALARM_BUF_1200_LEN];
+static unsigned long alarmSamplesWritten = 0;
 
 // Set true while openaiSpeak() is streaming to I2S.
 // Alarm and buzzer update functions check this and skip their writes
 // to avoid corrupting the TTS stream (both run on different cores).
 volatile bool speakerTTSPlaying = false;
 
+// ── I2S mutex — protects the I2S port from concurrent access ──
+// Core 1 (alarm/buzzer in loop) and Core 0 (TTS playback) both
+// write to SPK_I2S_PORT. This mutex prevents them from colliding.
+SemaphoreHandle_t speakerI2SMutex = nullptr;
+
+static void _precomputeAlarmBuffers() {
+    const int amplitude = 15000;
+    for (int i = 0; i < ALARM_BUF_800_LEN; i++) {
+        alarmBuf800[i] = (int16_t)(amplitude * sinf(2.0f * M_PI * 800.0f * i / SPK_SAMPLE_RATE));
+    }
+    for (int i = 0; i < ALARM_BUF_1200_LEN; i++) {
+        alarmBuf1200[i] = (int16_t)(amplitude * sinf(2.0f * M_PI * 1200.0f * i / SPK_SAMPLE_RATE));
+    }
+}
+
 void speakerInit() {
     LOG_INFO("SPK", "speakerInit() — I2S port %d  BCLK=%d LRC=%d DIN=%d rate=%d",
              (int)SPK_I2S_PORT, SPK_I2S_BCLK, SPK_I2S_LRC, SPK_I2S_DIN, SPK_SAMPLE_RATE);
+
+    // Create the I2S mutex once (survives re-init after TTS playback)
+    if (!speakerI2SMutex) {
+        speakerI2SMutex = xSemaphoreCreateMutex();
+    }
+
+    // Pre-compute sine buffers for non-blocking alarm
+    _precomputeAlarmBuffers();
 
     // Drive SD (shutdown) pin HIGH to enable the MAX98357A amplifier.
     // If SPK_SD_PIN is -1 the amp SD pin is assumed tied directly to 3.3V.
@@ -214,10 +247,14 @@ void speakerAlarmStart() {
 void speakerAlarmStop() {
     LOG_INFO("SPK", "speakerAlarmStop() called — was %s", alarmActive ? "active" : "already stopped");
     alarmActive = false;
+    alarmSamplesWritten = 0;
+
+    if (speakerI2SMutex) xSemaphoreTake(speakerI2SMutex, portMAX_DELAY);
     int16_t silence[256] = {0};
     size_t written;
     esp_err_t err = i2s_write(SPK_I2S_PORT, silence, sizeof(silence),
                                &written, 50 / portTICK_PERIOD_MS);
+    if (speakerI2SMutex) xSemaphoreGive(speakerI2SMutex);
     LOG_INFO("SPK", "Alarm flush silence — wrote %u bytes err=0x%x", written, err);
 }
 
@@ -225,13 +262,36 @@ bool speakerAlarmUpdate() {
     if (!alarmActive) return false;
     if (speakerTTSPlaying) return true;   // TTS owns I2S — skip tick, stay "active"
 
+    // Non-blocking: write ONE chunk of pre-computed sine wave per call.
+    // Each chunk takes <1 ms vs the old speakerPlayTone() which blocked ~100 ms.
+    // Toggle frequency every ~2200 samples (~100ms at 22050 Hz).
+
     if (millis() - alarmToggle >= 400) {
         alarmHigh = !alarmHigh;
-        float freq = alarmHigh ? 1200.0f : 800.0f;
-        LOG_DEBUG("SPK", "Alarm tick — %.0f Hz", freq);
-        speakerPlayTone(freq, 100);
+        alarmSamplesWritten = 0;
         alarmToggle = millis();
+        LOG_DEBUG("SPK", "Alarm tick — %.0f Hz", alarmHigh ? 1200.0f : 800.0f);
     }
+
+    // Only write ~2200 samples per tone burst (≈100ms of audio)
+    const unsigned long samplesPerBurst = (SPK_SAMPLE_RATE * 100) / 1000;
+    if (alarmSamplesWritten >= samplesPerBurst) return true;  // burst done, wait for toggle
+
+    // Pick the right pre-computed buffer
+    int16_t* buf   = alarmHigh ? alarmBuf1200 : alarmBuf800;
+    int       len  = alarmHigh ? ALARM_BUF_1200_LEN : ALARM_BUF_800_LEN;
+
+    // Try to acquire mutex — if TTS has it, skip this iteration (non-blocking)
+    if (speakerI2SMutex && xSemaphoreTake(speakerI2SMutex, 0) != pdTRUE) {
+        return true;
+    }
+
+    size_t written = 0;
+    // Short timeout (10ms) so loop() is never blocked long
+    i2s_write(SPK_I2S_PORT, buf, len * sizeof(int16_t), &written, 10 / portTICK_PERIOD_MS);
+    alarmSamplesWritten += len;
+
+    if (speakerI2SMutex) xSemaphoreGive(speakerI2SMutex);
     return true;
 }
 
@@ -258,9 +318,12 @@ void speakerBuzzerStop() {
     LOG_INFO("SPK", "speakerBuzzerStop() at pos=%u/%u", buzzerPos, BUZZER_PCM_LEN);
     buzzerActive = false;
     buzzerPos    = 0;
+
+    if (speakerI2SMutex) xSemaphoreTake(speakerI2SMutex, portMAX_DELAY);
     int16_t silence[64] = {0};
     size_t written;
     i2s_write(SPK_I2S_PORT, silence, sizeof(silence), &written, 10 / portTICK_PERIOD_MS);
+    if (speakerI2SMutex) xSemaphoreGive(speakerI2SMutex);
 }
 
 bool speakerBuzzerIsActive() {
@@ -277,14 +340,23 @@ bool speakerBuzzerUpdate() {
         return false;
     }
 
-    const TickType_t kTimeout = 50 / portTICK_PERIOD_MS;
+    // Try to acquire mutex — if TTS has it, skip this iteration
+    if (speakerI2SMutex && xSemaphoreTake(speakerI2SMutex, 0) != pdTRUE) {
+        return true;
+    }
+
+    const TickType_t kTimeout = 10 / portTICK_PERIOD_MS;
     const int chunkSamples = 256;
     int remaining = (int)(BUZZER_PCM_LEN - buzzerPos);
     int count = remaining < chunkSamples ? remaining : chunkSamples;
 
+    // Copy from PROGMEM into a local DRAM buffer before writing to I2S
+    int16_t localBuf[256];
+    memcpy_P(localBuf, &BUZZER_PCM[buzzerPos], count * sizeof(int16_t));
+
     size_t written = 0;
     esp_err_t err = i2s_write(SPK_I2S_PORT,
-                               &BUZZER_PCM[buzzerPos],
+                               localBuf,
                                count * sizeof(int16_t),
                                &written,
                                kTimeout);
@@ -296,6 +368,8 @@ bool speakerBuzzerUpdate() {
     }
 
     buzzerPos += count;
+
+    if (speakerI2SMutex) xSemaphoreGive(speakerI2SMutex);
     return true;
 }
 
