@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0a0a0f;
+  --foreground: #e4e4e7;
+  --card: #111118;
+  --card-border: #1e1e2a;
+  --accent-red: #ef4444;
+  --accent-green: #22c55e;
+  --accent-blue: #3b82f6;
+  --accent-yellow: #eab308;
+  --accent-purple: #a855f7;
+  --accent-cyan: #06b6d4;
+  --muted: #71717a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-border: var(--card-border);
+  --color-accent-red: var(--accent-red);
+  --color-accent-green: var(--accent-green);
+  --color-accent-blue: var(--accent-blue);
+  --color-accent-yellow: var(--accent-yellow);
+  --color-accent-purple: var(--accent-purple);
+  --color-accent-cyan: var(--accent-cyan);
+  --color-muted: var(--muted);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Pulse animation for heart rate */
+@keyframes pulse-heart {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+.animate-pulse-heart {
+  animation: pulse-heart 0.8s ease-in-out infinite;
+}
+
+/* Flash animation for emergency */
+@keyframes flash-emergency {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.animate-flash {
+  animation: flash-emergency 0.5s ease-in-out infinite;
+}
+
+/* Breathing animation for LED indicator */
+@keyframes breathe {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+.animate-breathe {
+  animation: breathe 4s ease-in-out infinite;
+}
+
+/* Scrollbar styling for logs panel */
+.logs-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.logs-scroll::-webkit-scrollbar-track {
+  background: var(--card);
+}
+.logs-scroll::-webkit-scrollbar-thumb {
+  background: var(--card-border);
+  border-radius: 3px;
+}
+.logs-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}

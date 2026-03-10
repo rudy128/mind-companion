@@ -16,6 +16,19 @@
 // !! In production, move this to a secrets file that is .gitignored !!
 #define OPENAI_API_KEY     "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"
 
+// ========================= MQTT Broker =========================
+// Local Mosquitto broker running on your laptop.
+// Replace MQTT_SERVER with your laptop's LAN IP before flashing.
+#define MQTT_SERVER        "172.20.10.3"   // ← your laptop LAN IP
+#define MQTT_PORT          1883
+#define MQTT_CLIENT_ID     "mind-companion"
+// Topics — publish
+#define MQTT_TOPIC_DATA    "mind/data"       // sensor telemetry JSON (1 Hz)
+#define MQTT_TOPIC_LOGS    "mind/logs"       // log messages
+#define MQTT_TOPIC_ALERT   "mind/alert"      // emergency events
+// Topics — subscribe
+#define MQTT_TOPIC_CMD     "mind/cmd"        // commands from dashboard
+
 // ========================= I2C Bus =========================
 #define I2C_SDA            47
 #define I2C_SCL            48
@@ -105,15 +118,27 @@
 #define GSR_WEAR_THRESHOLD      8000.0f
 #define GSR_LOW_THRESHOLD       4000.0f
 #define GSR_MODERATE_THRESHOLD  2000.0f
-// ========================= Motivational Quotes =========================
-#define NUM_QUOTES 6
-static const char* QUOTES[NUM_QUOTES] = {
-    "Take a deep breath",
-    "This feeling will pass",
-    "Slow down, you got this",
-    "You are stronger than you think",
-    "One step at a time",
-    "It's okay to ask for help"
+
+// ========================= Audio Quotes System =========================
+// Audio quotes are now managed by the audio_quotes module.
+// Audio files must be in LittleFS as MP3 files.
+// The data/ folder becomes / in LittleFS storage.
+
+#include <map>
+#include <string>
+
+// Simple quote-to-audio mapping
+// Key: Quote text, Value: Audio file path in LittleFS
+static std::map<std::string, std::string> AUDIO_QUOTE_MAP = {
+    // CALM quotes
+    {"Take a deep breath", "/q1.mp3"},
+    {"This feeling will pass", "/q1.mp3"},
+    {"Slow down, you got this", "/q1.mp3"},
+    
+    // MOTIVATE quotes
+    {"You are stronger than you think", "/q1.mp3"},
+    {"One step at a time", "/q1.mp3"},
+    {"It's okay to ask for help", "/q1.mp3"}
 };
 
 #endif // CONFIG_H

@@ -49,6 +49,9 @@ bool wifiConnect() {
     if (WiFi.status() == WL_CONNECTED) return true;
 
     Serial.printf("[WiFi] Connecting to %s\n", WIFI_SSID);
+    WiFi.mode(WIFI_STA);            // ensure station-only mode
+    WiFi.disconnect(true);           // clear any stale state
+    delay(100);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     int retry = 0;

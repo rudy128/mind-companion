@@ -4,10 +4,11 @@
 // =============================================================
 //
 //  Core split:
-//    Core 1 (loop) — sensors, TFT display, actuators, web server
+//    Core 1 (loop) — sensors, TFT display, actuators
 //                    Runs every ~1 ms with no blocking waits.
-//    Core 0 (task) — speech recording + OpenAI HTTP (can take 2-5s)
-//                    Isolated so it never stalls Core 1.
+//    Core 0 (tasks) — MQTT task (50 ms tick, 1 Hz publish)
+//                     Speech task (when enabled — recording + OpenAI)
+//                     WiFi event task (ESP-IDF internal)
 //
 // =============================================================
 
@@ -29,6 +30,7 @@
 #include "actuators/led_breathing.h"
 #include "actuators/vibration.h"
 #include "actuators/speaker.h"
+#include "actuators/audio_quotes.h"
 
 // Display
 #include "display/tft_display.h"
@@ -38,7 +40,7 @@
 
 // Network
 #include "network/wifi_manager.h"
-#include "network/web_server.h"
+#include "network/mqtt_client.h"
 #include "network/openai_api.h"
 #include "network/logger.h"
 
@@ -46,8 +48,8 @@
 #include "logic/sleep_detector.h"
 #include "logic/command_handler.h"
 
-// ─── Shared dashboard state ────────────────────────────────
-static DashboardState dashState;
+// ─── Shared dashboard state (published via MQTT) ───────────
+static MqttDashState dashState;
 
 // ─── Speech task — runs on Core 0 ──────────────────────────
 // Audio buffer lives in DRAM (not stack) — 64 KB
@@ -67,10 +69,6 @@ static bool          awakeNudgeFired   = false; // true after the 1-min nudge ha
 // ─── Emergency state ───────────────────────────────────────
 static bool emergencyFlag = false;
 
-// ─── TTS quote pending (set on Core 1, consumed on Core 0) ─
-static volatile bool pendingTTSFlag     = false;
-static char          pendingTTSText[96] = "";
-
 // ─── Sensor-available flags (graceful degradation) ─────────
 static bool hasHeartRate = false;
 static bool hasMPU       = false;
@@ -78,12 +76,13 @@ static bool hasRTC       = false;
 static bool hasCamera    = false;
 
 // ─── Forward declarations ──────────────────────────────────
-static void onBreatheRequest();
+//static void onBreatheRequest();
 static void onAlarmOn();
 static void onAlarmOff();
 static void onVibrateRequest();
 static void onClearEmergency();
 static void speechTask(void* param);
+static void onMqttCommand(const String& cmd);
 
 // ============================================================
 //  SETUP  (runs on Core 1)
@@ -127,6 +126,8 @@ void setup() {
 
     // ── LED Breathing ────────────────────────────────────
     ledBreathingInit();
+    //ledBreathingInit();
+    ledBreathingStart(); 
 
     // ── Vibration Motor ──────────────────────────────────
     vibrationInit();
@@ -136,7 +137,7 @@ void setup() {
     speakerTest();   // ← plays 3 tones at full volume; remove once speaker is confirmed working
 
     // ── Microphone ───────────────────────────────────────
-    micInit();
+    // micInit();   // DISABLED — testing sensors + MQTT first
 
     // ── Sleep Detector ───────────────────────────────────
     sleepDetectorInit();
@@ -159,7 +160,7 @@ void setup() {
         cameraStartStreamServer();   // MJPEG on port 81 via esp_http_server
     }
 
-    // ── Web Server ───────────────────────────────────────
+    // ── MQTT Client (replaces web server) ──────────────────
     dashState.gsrValue         = 0;
     dashState.stressLevel      = "Low";
     dashState.heartBPM         = 0;
@@ -174,8 +175,8 @@ void setup() {
     dashState.breathingActive  = false;
     dashState.cameraOpen       = false;
 
-    webServerInit(&dashState);
-    webServerSetCallbacks(onBreatheRequest, onAlarmOn, onAlarmOff, onVibrateRequest, onClearEmergency);
+    mqttInit(&dashState);
+    mqttSetCommandCallback(onMqttCommand);
 
     // ── Init timing ──────────────────────────────────────
     unsigned long now  = millis();
@@ -186,8 +187,10 @@ void setup() {
     lastAwakeNudge     = now;
 
     // ── Speech task on Core 0 ────────────────────────────
-    // Stack 48 KB — Audio lib + HTTPClient + LittleFS + TLS need ~40 KB minimum
-    // Priority 1 (low) so Core 0 WiFi/BT tasks stay healthy
+    // DISABLED — testing sensors + MQTT stability first.
+    // The OpenAI TLS calls on Core 0 starve the WiFi task and cause
+    // MQTT keepalive timeouts. Re-enable once MQTT is confirmed stable.
+    /*
     xTaskCreatePinnedToCore(
         speechTask,         // function
         "speech",           // name
@@ -197,6 +200,7 @@ void setup() {
         &speechTaskHandle,  // handle
         0                   // ← Core 0
     );
+    */
 
     // ── Ready ────────────────────────────────────────────
     speakerBeepOK();
@@ -264,7 +268,7 @@ static void speechTask(void* param) {
                 switch (cmd) {
                     case CMD_BREATHING_PATTERN:
                         LOG_INFO("SPEECH", "→ CMD_BREATHING_PATTERN: calling ledBreathingStart(5)");
-                        ledBreathingStart(5);
+                        //ledBreathingStart(5);   from old pattern
                         LOG_INFO("SPEECH", "→ ledBreathingStart done, isActive=%s",
                                  ledBreathingIsActive() ? "true" : "false");
                         break;
@@ -302,24 +306,6 @@ static void speechTask(void* param) {
 
         LOG_INFO("SPEECH", "--- CYCLE END --- heap=%lu", esp_get_free_heap_size());
         speechBusy = false;
-
-        // ── TTS queue — speak any pending motivational quote ──
-        // Loop so that if GSR queues a new quote *while* TTS was streaming,
-        // it plays immediately rather than waiting a full 15-s speech cycle.
-        while (pendingTTSFlag && wifiEnsureConnected()) {
-            pendingTTSFlag = false;   // clear before network call so Core 1 can re-queue
-            LOG_INFO("SPEECH", "TTS pending — speaking: \"%s\"", pendingTTSText);
-            bool alarmWasActive = speakerAlarmIsActive();  // true only if emergency alarm is on
-            if (alarmWasActive) speakerAlarmStop();        // silence it so TTS is audible
-            openaiSpeak(pendingTTSText);
-            LOG_INFO("SPEECH", "TTS done");
-            if (alarmWasActive) {
-                LOG_INFO("SPEECH", "Restoring emergency alarm after TTS");
-                speakerAlarmStart();
-            }
-            // Brief yield between back-to-back TTS calls
-            vTaskDelay(pdMS_TO_TICKS(200));
-        }
     }
 }
 
@@ -335,16 +321,35 @@ static void speechTask(void* param) {
 void loop() {
     unsigned long now = millis();
 
+    // ── DEBUG: heartbeat every 10s to prove loop() runs ──
+    static unsigned long lastHeartbeat = 0;
+    static unsigned long loopCount = 0;
+    loopCount++;
+    if (now - lastHeartbeat >= 10000UL) {
+        lastHeartbeat = now;
+        Serial.printf("[LOOP] %lu ms — alive loops=%lu bpm=%d finger=%d mqtt=%d\n",
+                      now, loopCount, dashState.heartBPM,
+                      (int)dashState.fingerPresent, mqttIsConnected());
+        loopCount = 0;
+    }
+
+    // ── MQTT runs on its own Core 0 task — no mqttLoop() call here ──
+
+    // ── Audio Quotes Loop — process MP3 playback ─────────
+    audioQuotesLoop();
+    
+    //dashState.breathingActive = ledBreathingUpdate();
     // =========================================================
     // A. SENSOR READS — every loop iteration, no gating
     //    These are fast (µs range) and must run continuously.
     // =========================================================
 
     // ── Heart Rate — drain MAX30102 FIFO periodically ───────
-    // At 400Hz sample rate the 32-sample FIFO fills in 80ms.
-    // Reading every 20ms keeps it drained without saturating I2C.
+    // At 100Hz / 4× avg the effective rate is 25 samples/sec.
+    // The 32-sample FIFO fills in ~1.3 s. Reading every 50ms keeps
+    // it drained with margin to spare.
     static unsigned long lastHrRead = 0;
-    if (hasHeartRate && (now - lastHrRead >= 20UL)) {
+    if (hasHeartRate && (now - lastHrRead >= 50UL)) {
         lastHrRead = now;
         heartRateUpdate();  // reads all queued samples
     }
@@ -385,6 +390,7 @@ void loop() {
     // until voice command "stop" or web dashboard clears it.
     static bool prevButtonState = false;
     bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
+    
 
 if (buttonPressed && !prevButtonState) {   // just pressed
 
@@ -395,12 +401,14 @@ if (buttonPressed && !prevButtonState) {   // just pressed
         speakerAlarmStart();
         tftUpdateEmergency(true);
         dashState.emergencyActive = true;
+        mqttPublishAlert(true);
     } 
     else {
         LOG_ERROR("MAIN", "EMERGENCY CLEARED");
         speakerAlarmStop();
         tftUpdateEmergency(false);
         dashState.emergencyActive = false;
+        mqttPublishAlert(false);
     }
 }
 
@@ -449,6 +457,8 @@ prevButtonState = buttonPressed;
     if (now - lastDisplayTick >= 1000UL) {
         lastDisplayTick = now;   // snap to current time — prevents multiple catch-up fires
 
+        Serial.printf("[TICK] %lu ms — 1s tick firing\n", now);
+
         // ── Heart Rate ────────────────────────────────────
         if (hasHeartRate) {
             bool  finger = heartRateFingerPresent();
@@ -457,9 +467,21 @@ prevButtonState = buttonPressed;
             dashState.heartBPM      = bpm;
             dashState.fingerPresent = finger;
 
+            Serial.printf("[TICK-HR] bpm=%d finger=%d\n", bpm, (int)finger);
+
+            // DEBUG: confirm dashState is being updated for MQTT
+            static int lastLoggedBpm = -1;
+            static bool lastLoggedFinger = false;
+            if (bpm != lastLoggedBpm || finger != lastLoggedFinger) {
+                LOG_INFO("DASH", "dashState updated — bpm=%d finger=%s",
+                         bpm, finger ? "true" : "false");
+                lastLoggedBpm = bpm;
+                lastLoggedFinger = finger;
+            }
+
             if (heartRateIsAbnormal() && !ledBreathingIsActive()) {
-                LOG_WARN("MAIN", "Abnormal HR %d bpm — starting breathing LED", bpm);
-                ledBreathingStart(5);
+                //LOG_WARN("MAIN", "Abnormal HR %d bpm — starting breathing LED", bpm);
+                //ledBreathingStart(5);
             }
         }
 
@@ -541,23 +563,18 @@ prevButtonState = buttonPressed;
         dashState.gsrValue    = conductance;
         dashState.stressLevel = stress;
 
-        // ── GSR High-stress → TTS motivational quote only ──
-        // GSR no longer triggers the alarm — it only queues a spoken quote.
+        // ── GSR High-stress → Play audio quote ──
+        // GSR triggers audio quote playback when high stress is detected.
         // The alarm is reserved for the emergency button (CMD_EMERGENCY).
         if (stress == "High") {
             LOG_WARN("GSR", "HIGH STRESS DETECTED (%.1f < %.0f)",
                      conductance, (float)GSR_MODERATE_THRESHOLD);
-            // Don't queue while TTS is actively streaming — wait for next reading
-            if (speakerTTSPlaying) {
-                LOG_DEBUG("GSR", "→ TTS streaming, deferring queue until done");
-            } else if (!pendingTTSFlag) {
-                int idx = random(0, NUM_QUOTES);
-                strncpy(pendingTTSText, QUOTES[idx], sizeof(pendingTTSText) - 1);
-                pendingTTSText[sizeof(pendingTTSText) - 1] = '\0';
-                pendingTTSFlag = true;
-                LOG_INFO("GSR", "TTS queued [%d]: \"%s\"", idx, pendingTTSText);
-            } else {
-                LOG_DEBUG("GSR", "TTS already pending, skipping queue");
+            // Play calming quote directly (non-blocking)
+            static unsigned long lastQuoteTime = 0;
+            if (now - lastQuoteTime >= 30000UL) {  // Max once every 30 seconds
+                playQuoteByCategory(QUOTE_CALM);
+                lastQuoteTime = now;
+                LOG_INFO("GSR", "Playing calming audio quote due to high stress");
             }
         }
 
@@ -584,7 +601,7 @@ prevButtonState = buttonPressed;
 // ============================================================
 //  Callbacks (web server remote control → Core 1 safe)
 // ============================================================
-static void onBreatheRequest()   { ledBreathingStart(5); }
+//static void onBreatheRequest()   { ledBreathingStart(5); }     old code
 static void onAlarmOn()          { speakerAlarmStart(); }
 static void onAlarmOff()         { speakerAlarmStop(); }
 static void onVibrateRequest()   { vibrationPulse(800); }
@@ -593,5 +610,28 @@ static void onClearEmergency()   {
     speakerAlarmStop();
     tftUpdateEmergency(false);
     dashState.emergencyActive = false;
+    mqttPublishAlert(false);
     LOG_INFO("MAIN", "Emergency cleared via dashboard");
+}
+
+// ============================================================
+//  MQTT Command Handler — receives commands from dashboard
+//  Commands arrive as JSON on mind/cmd: {"cmd":"breathe"}
+// ============================================================
+static void onMqttCommand(const String& cmd) {
+    LOG_INFO("MQTT_CMD", "Received command: %s", cmd.c_str());
+
+    if (cmd == "breathe") {
+        ledBreathingStart();
+    } else if (cmd == "alarm_on") {
+        onAlarmOn();
+    } else if (cmd == "alarm_off") {
+        onAlarmOff();
+    } else if (cmd == "vibrate") {
+        onVibrateRequest();
+    } else if (cmd == "clear_emergency") {
+        onClearEmergency();
+    } else {
+        LOG_WARN("MQTT_CMD", "Unknown command: %s", cmd.c_str());
+    }
 }

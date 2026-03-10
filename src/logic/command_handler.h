@@ -22,4 +22,7 @@ VoiceCommand commandParse(const String& text);
 // Human-readable name
 String commandToString(VoiceCommand cmd);
 
+// Execute a voice command with appropriate audio response
+void commandExecute(VoiceCommand cmd);
+
 #endif // COMMAND_HANDLER_H

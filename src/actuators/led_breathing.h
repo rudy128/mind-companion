@@ -1,6 +1,7 @@
 // =============================================================
 // LED Breathing Pattern — 4× LEDs via simple ON/OFF toggle
 // =============================================================
+/*
 #ifndef LED_BREATHING_H
 #define LED_BREATHING_H
 
@@ -18,3 +19,22 @@ void ledBreathingStop();
 bool ledBreathingIsActive();
 
 #endif // LED_BREATHING_H
+*/
+
+#pragma once
+#include <Arduino.h>
+
+// Initialize breathing LED
+void ledBreathingInit();
+
+// Start breathing animation
+void ledBreathingStart();
+
+// Stop breathing animation
+void ledBreathingStop();
+
+// Update breathing (call in loop)
+bool ledBreathingUpdate();
+
+// Check if breathing is active
+bool ledBreathingIsActive();

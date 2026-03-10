@@ -1,38 +1,17 @@
 // =============================================================
-// Web Server — AsyncWebServer Routes + Dashboard
+// Web Server — REMOVED (replaced by MQTT)
+// =============================================================
+// The AsyncWebServer has been removed to free ~40-60 KB of SRAM.
+// All dashboard communication now goes through MQTT (mqtt_client.h).
+// This header remains only for backward compatibility of the
+// DashboardState type alias — will be cleaned up later.
 // =============================================================
 #ifndef WEB_SERVER_H
 #define WEB_SERVER_H
 
-#include <Arduino.h>
+#include "mqtt_client.h"
 
-// Shared state struct for dashboard display
-struct DashboardState {
-    float  gsrValue;
-    String stressLevel;
-    int    heartBPM;
-    bool   fingerPresent;
-    String sleepQuality;
-    bool   emergencyActive;
-    float  accelX, accelY, accelZ;
-    float  temperature;
-    String lastVoiceCommand;
-    bool   breathingActive;
-    bool   cameraOpen;        // true = dashboard should show camera feed
-};
-
-// Initialize and start the async web server on port 80.
-// Pass a pointer to a DashboardState that the server reads each request.
-void webServerInit(DashboardState* state);
-
-// Register callbacks for dashboard control buttons.
-// Any callback left as nullptr will be ignored.
-void webServerSetCallbacks(
-    void (*breathe)(),
-    void (*alarmOn)(),
-    void (*alarmOff)(),
-    void (*vibrate)(),
-    void (*clearEmergency)()
-);
+// Backward-compat alias so main.cpp doesn't need a full rewrite yet
+typedef MqttDashState DashboardState;
 
 #endif // WEB_SERVER_H

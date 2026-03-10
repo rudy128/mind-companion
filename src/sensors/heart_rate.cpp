@@ -1,8 +1,10 @@
 // =============================================================
 // Heart Rate Sensor — MAX30102 (libmax3010x) Implementation
-// Optimised for real-time, low-latency beat detection:
-//   • 400 Hz sample rate, 69µs pulse width, 4096 ADC range
-//   • Drain full FIFO every call (never misses a beat)
+// Uses proven beat-detection logic:
+//   • 100 Hz sample rate, 4× hardware averaging
+//   • 411µs pulse width for best SNR
+//   • LED brightness 0x2F
+//   • particleSensor.check() every call, then drain FIFO
 //   • I2C fast mode (400 kHz)
 //   • Full state reset on finger removal → no stale data
 // =============================================================
@@ -26,11 +28,11 @@ static bool  fingerOn   = false;
 
 // ── Helpers ──────────────────────────────────────────────────
 
-static void resetRollingAverage() {
+static void resetRates() {
     for (byte i = 0; i < RATE_SIZE; i++) rates[i] = 0;
     rateSpot   = 0;
-    lastBeat   = 0;
     averageBPM = 0;
+    lastBeat   = 0;
 }
 
 // ── Public API ───────────────────────────────────────────────
@@ -38,94 +40,69 @@ static void resetRollingAverage() {
 bool heartRateInit() {
     LOG_INFO("HR", "Initializing MAX30102...");
 
-    // Use fast I2C (400 kHz) for lower read latency
     if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) {
         LOG_ERROR("HR", "MAX30102 not found! Check SDA(GPIO%d) SCL(GPIO%d)", I2C_SDA, I2C_SCL);
         return false;
     }
 
-    // High-performance config:
-    //   sampleRate  = 400   → sensor produces a new sample every 2.5 ms
-    //   pulseWidth  = 69 µs → fastest pulse width, lowest latency
-    //   adcRange    = 4096  → highest sensitivity
-    //   ledBright   = 0x3F  → strong enough LED for finger detection
-    //   sampleAvg   = 1     → NO hardware averaging — we want every raw sample
-    byte ledBrightness = 0x3F;
-    byte sampleAverage = 1;
+    byte ledBrightness = 0x2F;
+    byte sampleAverage = 4;
     byte ledMode       = 2;
-    int  sampleRate    = 400;
-    int  pulseWidth    = 69;
+    int  sampleRate    = 100;
+    int  pulseWidth    = 411;
     int  adcRange      = 4096;
 
     particleSensor.setup(ledBrightness, sampleAverage, ledMode,
                          sampleRate, pulseWidth, adcRange);
 
-    particleSensor.setPulseAmplitudeRed(0x3F);
-    particleSensor.setPulseAmplitudeIR(0x3F);
+    particleSensor.setPulseAmplitudeRed(0x2F);
+    particleSensor.setPulseAmplitudeIR(0x2F);
     particleSensor.setPulseAmplitudeGreen(0);
 
-    LOG_INFO("HR", "MAX30102 OK — 400Hz / 69us / 4096 ADC");
+    LOG_INFO("HR", "MAX30102 OK — 100Hz / 4×avg / 411us / 4096 ADC");
     return true;
 }
 
 void heartRateUpdate() {
-    // ── Drain the entire FIFO in one call ───────────────────
-    // The MAX30102 buffers up to 32 samples. If we only read
-    // one per loop() call and the loop slows down (web server,
-    // display, etc.) the FIFO fills with stale data and beat
-    // detection lags by hundreds of milliseconds.
-    // Reading every available sample here costs only a few µs
-    // extra per call on fast I2C.
-
-    byte available = particleSensor.available();
-    if (available == 0) {
-        particleSensor.check(); // ask sensor to fill the library FIFO
-        available = particleSensor.available();
-    }
+    // Must call check() every iteration to pull new samples from
+    // the sensor's I2C FIFO into the library's ring buffer.
+    particleSensor.check();
 
     while (particleSensor.available()) {
         irValue = particleSensor.getIR();
-        particleSensor.nextSample(); // advance library read pointer
+        particleSensor.nextSample();
 
         if (irValue > 10000) {
-            // Finger just placed — start clean
             if (!fingerOn) {
-                resetRollingAverage();
                 LOG_INFO("HR", "Finger detected — IR=%ld", irValue);
+                resetRates();
+                fingerOn = true;
             }
-            fingerOn = true;
 
             if (checkForBeat(irValue)) {
                 long delta = millis() - lastBeat;
                 lastBeat = millis();
-                float currentBPM = 60.0f / (delta / 1000.0f);
 
-                // Sane physiological range
-                if (currentBPM > 20 && currentBPM < 255) {
-                    LOG_DEBUG("HR", "Beat! delta=%ldms raw_BPM=%.1f", delta, currentBPM);
-                    rates[rateSpot++] = (byte)currentBPM;
+                float bpm = 60.0 / (delta / 1000.0);
+
+                if (bpm > 20 && bpm < 255) {
+                    rates[rateSpot++] = (byte)bpm;
                     rateSpot %= RATE_SIZE;
 
                     float sum = 0;
-                    byte  cnt = 0;
+                    byte  count = 0;
                     for (byte i = 0; i < RATE_SIZE; i++) {
-                        if (rates[i] > 0) { sum += rates[i]; cnt++; }
+                        if (rates[i] > 0) { sum += rates[i]; count++; }
                     }
-                    if (cnt > 0) {
-                        averageBPM = sum / cnt;
-                        LOG_INFO("HR", "BPM=%.1f  (avg of %d samples, IR=%ld)", averageBPM, cnt, irValue);
-                    }
-                } else {
-                    // Out of range — silently discard (happens frequently
-                    // with 400Hz / no hardware averaging; logging every one
-                    // floods Serial and stalls the loop)
+                    if (count > 0) averageBPM = sum / count;
+
+                    LOG_INFO("HR", "BPM=%.1f  (avg of %d samples, IR=%ld)", averageBPM, count, irValue);
                 }
             }
         } else {
-            // Finger removed
             if (fingerOn) {
                 LOG_INFO("HR", "Finger removed — IR=%ld (was %.1f bpm)", irValue, averageBPM);
-                resetRollingAverage();
+                resetRates();
             }
             fingerOn = false;
         }

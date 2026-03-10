@@ -4,7 +4,7 @@
 
 #include "led_breathing.h"
 #include "../config.h"
-
+/*
 static bool active = false;
 static bool fadingIn = true;
 
@@ -80,4 +80,79 @@ bool ledBreathingIsActive()
     return active;
 }
 
+*/
 
+
+
+//--------------------------sin wave direct
+#include "led_breathing.h"
+#include <math.h>
+#include "config.h"
+
+// ─── LEDC configuration ─────────────────
+static const int LED_CHANNEL = 0;
+static const int LED_FREQ = 5000;
+static const int LED_RES = 8;
+
+// ─── Breathing state ────────────────────
+static bool breathingActive = false;
+static unsigned long startTime = 0;
+
+// breathing cycle (ms)
+static const float BREATH_PERIOD = 8000.0;   // 8 seconds full breath
+
+// ────────────────────────────────────────
+void ledBreathingInit()
+{
+    ledcSetup(LED_CHANNEL, LED_FREQ, LED_RES);
+    ledcAttachPin(LED_PIN, LED_CHANNEL);
+
+    ledcWrite(LED_CHANNEL, 0);
+}
+
+// ────────────────────────────────────────
+void ledBreathingStart()
+{
+    breathingActive = true;
+    startTime = millis();
+}
+
+// ────────────────────────────────────────
+void ledBreathingStop()
+{
+    breathingActive = false;
+    ledcWrite(LED_CHANNEL, 0);
+}
+
+// ────────────────────────────────────────
+bool ledBreathingIsActive()
+{
+    return breathingActive;
+}
+
+// ────────────────────────────────────────
+bool ledBreathingUpdate()
+{
+    if (!breathingActive)
+        return false;
+
+    float elapsed = millis() - startTime;
+
+    // convert to sine phase
+    float phase = (elapsed / BREATH_PERIOD) * 2 * PI;
+
+    // sine wave (-1 to 1)
+    float wave = sin(phase);
+
+    // normalize to 0–1
+    float brightness = (wave + 1.0) / 2.0;
+
+    // gamma correction for smoother LED perception
+    brightness = pow(brightness, 2.2);
+
+    int pwm = brightness * 255;
+
+    ledcWrite(LED_CHANNEL, pwm);
+
+    return true;
+}

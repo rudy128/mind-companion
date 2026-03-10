@@ -1,5 +1,5 @@
 // =============================================================
-// Speaker — MAX98357A I2S Output + Alarm + OpenAI TTS
+// Speaker — MAX98357A I2S Output + Alarm
 // =============================================================
 #ifndef SPEAKER_H
 #define SPEAKER_H
@@ -10,14 +10,10 @@
 void speakerInit();         // configure I2S #1 in TX mode
 void speakerTest();         // blocking 3-tone test — call once in setup() to verify hardware
 void speakerPlayTone(float freqHz, unsigned long durationMs); // simple sine tone
-void speakerPlayRaw(const uint8_t* pcmData, size_t pcmBytes); // play raw 16-bit PCM buffer (TTS)
-
-// Flag set by openaiSpeak() while TTS is streaming.
-// Alarm/buzzer update functions poll this to avoid I2S collisions.
-extern volatile bool speakerTTSPlaying;
+void speakerPlayRaw(const uint8_t* pcmData, size_t pcmBytes); // play raw 16-bit PCM buffer (audio files)
 
 // I2S mutex — protects SPK_I2S_PORT from concurrent Core 0 / Core 1 access.
-// Created in speakerInit(). openaiSpeak() must hold this while it owns I2S.
+// Created in speakerInit(). Audio playback must hold this while it owns I2S.
 extern SemaphoreHandle_t speakerI2SMutex;
 
 // Play a short beep sequence to indicate status

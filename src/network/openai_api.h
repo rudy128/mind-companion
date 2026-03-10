@@ -1,5 +1,5 @@
 // =============================================================
-// OpenAI API — Whisper STT + TTS
+// OpenAI API — Whisper STT (Speech-to-Text)
 // =============================================================
 #ifndef OPENAI_API_H
 #define OPENAI_API_H
@@ -12,10 +12,5 @@
 // pcmBytes: size in bytes of the PCM data
 // Returns empty string on failure.
 String openaiTranscribe(int16_t* pcmData, size_t pcmBytes);
-
-// Call OpenAI TTS API with the given text and play it immediately
-// through the speaker via speakerPlayRaw(). Blocks until playback done.
-// Returns true on success.
-bool openaiSpeak(const char* text);
 
 #endif // OPENAI_API_H

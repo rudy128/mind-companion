@@ -1,19 +1,13 @@
 // =============================================================
-// OpenAI API — Whisper STT + TTS Implementation
+// OpenAI API — Whisper STT (Speech-to-Text) Implementation
 // =============================================================
 #include "openai_api.h"
 #include "../config.h"
-#include "../actuators/speaker.h"
 #include "../network/wifi_manager.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <esp_task_wdt.h>
-#include <LittleFS.h>
-#include <Audio.h>
-#include <driver/i2s.h>   // for i2s_driver_uninstall / reinstall around Audio playback
-
-#define TTS_WAV_PATH  "/tts_out.wav"
 
 // =============================================================
 //  openaiTranscribe — streaming upload (no 64 KB malloc copy)
@@ -131,98 +125,4 @@ String openaiTranscribe(int16_t* pcmData, size_t pcmBytes) {
     String text = doc["text"] | "";
     Serial.println("[AI] Transcription: " + text);
     return text;
-}
-
-// =============================================================
-//  OpenAI TTS — request WAV from API, save to LittleFS,
-//  play back with Audio library (exactly like the reference sketch)
-// =============================================================
-bool openaiSpeak(const char* text) {
-    Serial.printf("[AI-TTS] speak() → \"%s\"\n", text);
-
-    // ── 0. Verify WiFi is up before touching HTTPClient ─
-    if (!wifiEnsureConnected()) {
-        Serial.println("[AI-TTS] WiFi not ready — aborting TTS");
-        return false;
-    }
-
-    // ── 1. Mount LittleFS ─────────────────────────────────
-    if (!LittleFS.begin(false)) {
-        Serial.println("[AI-TTS] LittleFS mount failed — formatting...");
-        LittleFS.format();
-        if (!LittleFS.begin(false)) {
-            Serial.println("[AI-TTS] LittleFS init failed");
-            return false;
-        }
-    }
-
-    // ── 2. POST to OpenAI TTS, response_format = wav ─────
-    HTTPClient http;
-    http.begin("https://api.openai.com/v1/audio/speech");
-    http.addHeader("Content-Type",  "application/json");
-    http.addHeader("Authorization", String("Bearer ") + OPENAI_API_KEY);
-
-    JsonDocument doc;
-    doc["model"]  = "tts-1";
-    doc["voice"]  = "alloy";
-    doc["input"]  = text;
-    doc["response_format"] = "wav";
-    String body;
-    serializeJson(doc, body);
-
-    Serial.println("[AI-TTS] POST /v1/audio/speech ...");
-    int code = http.POST(body);
-    Serial.printf("[AI-TTS] HTTP %d\n", code);
-    if (code != 200) {
-        Serial.printf("[AI-TTS] Bad HTTP code %d\n", code);
-        http.end();
-        return false;
-    }
-
-    // ── 3. Save WAV stream directly to LittleFS ───────────
-    LittleFS.remove(TTS_WAV_PATH);
-    File f = LittleFS.open(TTS_WAV_PATH, FILE_WRITE);
-    if (!f) {
-        Serial.println("[AI-TTS] Cannot open file for writing");
-        http.end();
-        return false;
-    }
-
-    size_t bytesWritten = http.writeToStream(&f);
-    f.close();
-    http.end();
-
-    Serial.printf("[AI-TTS] WAV saved: %u bytes\n", bytesWritten);
-
-    if (bytesWritten == 0) {
-        Serial.println("[AI-TTS] Nothing written — aborting");
-        return false;
-    }
-
-    // ── 4. Play with Audio library ────────────────────────
-    // The Audio lib installs its own I2S driver. We must uninstall the
-    // one from speakerInit() first, then reinstall it after playback.
-    // Hold the I2S mutex so Core 1 alarm/buzzer don't collide.
-    if (speakerI2SMutex) xSemaphoreTake(speakerI2SMutex, portMAX_DELAY);
-    speakerTTSPlaying = true;
-    i2s_driver_uninstall(SPK_I2S_PORT);   // hand I2S port to Audio lib
-
-    Audio ttsAudio;
-    ttsAudio.setPinout(SPK_I2S_BCLK, SPK_I2S_LRC, SPK_I2S_DIN);
-    ttsAudio.setVolume(21);
-    ttsAudio.connecttoFS(LittleFS, TTS_WAV_PATH);
-
-    Serial.println("[AI-TTS] Playing WAV...");
-    while (ttsAudio.isRunning()) {
-        ttsAudio.loop();
-        esp_task_wdt_reset();
-        vTaskDelay(1);
-    }
-
-    // Audio destructor releases I2S — now reinstall our own driver
-    speakerInit();   // restores I2S_NUM_1 at SPK_SAMPLE_RATE for alarm/buzzer
-    speakerTTSPlaying = false;
-    if (speakerI2SMutex) xSemaphoreGive(speakerI2SMutex);
-    Serial.println("[AI-TTS] Playback done");
-    return true;
 }

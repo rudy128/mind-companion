@@ -1,0 +1,1 @@
+[MQTT] mind/data (213 bytes): {"bpm":0,"finger":false,"gsr":0,"stress":"Low","sleep":"Awake","emergency":false,"ax":0.00,"ay":0.00,"az":0.00,"temp":0.0,"voice":"","breathing":true,"camOpen":false,"ip":"172.20.10.8","heap":8590227,"uptime":235}

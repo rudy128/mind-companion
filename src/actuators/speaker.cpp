@@ -24,13 +24,8 @@ static int16_t alarmBuf800[ALARM_BUF_800_LEN];
 static int16_t alarmBuf1200[ALARM_BUF_1200_LEN];
 static unsigned long alarmSamplesWritten = 0;
 
-// Set true while openaiSpeak() is streaming to I2S.
-// Alarm and buzzer update functions check this and skip their writes
-// to avoid corrupting the TTS stream (both run on different cores).
-volatile bool speakerTTSPlaying = false;
-
 // ── I2S mutex — protects the I2S port from concurrent access ──
-// Core 1 (alarm/buzzer in loop) and Core 0 (TTS playback) both
+// Core 1 (alarm/buzzer in loop) and Core 0 (audio playback) both
 // write to SPK_I2S_PORT. This mutex prevents them from colliding.
 SemaphoreHandle_t speakerI2SMutex = nullptr;
 
@@ -260,7 +255,6 @@ void speakerAlarmStop() {
 
 bool speakerAlarmUpdate() {
     if (!alarmActive) return false;
-    if (speakerTTSPlaying) return true;   // TTS owns I2S — skip tick, stay "active"
 
     // Non-blocking: write ONE chunk of pre-computed sine wave per call.
     // Each chunk takes <1 ms vs the old speakerPlayTone() which blocked ~100 ms.
@@ -332,7 +326,6 @@ bool speakerBuzzerIsActive() {
 
 bool speakerBuzzerUpdate() {
     if (!buzzerActive) return false;
-    if (speakerTTSPlaying) return true;   // TTS owns I2S — skip, stay "active"
 
     if (buzzerPos >= BUZZER_PCM_LEN) {
         LOG_INFO("SPK", "speakerBuzzerUpdate() — PCM finished, stopping");
@@ -340,7 +333,7 @@ bool speakerBuzzerUpdate() {
         return false;
     }
 
-    // Try to acquire mutex — if TTS has it, skip this iteration
+    // Try to acquire mutex — if audio playback has it, skip this iteration
     if (speakerI2SMutex && xSemaphoreTake(speakerI2SMutex, 0) != pdTRUE) {
         return true;
     }

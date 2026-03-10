@@ -3,6 +3,10 @@
 // =============================================================
 #include "tft_display.h"
 #include "../config.h"
+#include "../actuators/audio_quotes.h"
+#include "../network/logger.h"
+#include <vector>
+#include <string>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -216,7 +220,27 @@ void tftUpdateStress(const String& level, float gsrValue) {
         // Show motivational quote
         tft.setTextSize(1);
         tft.setCursor(10, Y_STRESS_QUOTE);
-        tft.println(QUOTES[random(0, NUM_QUOTES)]);
+        
+        // Pick a random quote from the hashmap keys
+        std::vector<std::string> quoteKeys;
+        for (const auto& pair : AUDIO_QUOTE_MAP) {
+            quoteKeys.push_back(pair.first);
+        }
+        
+        if (quoteKeys.size() > 0) {
+            int randomIndex = random(0, quoteKeys.size());
+            const char* selectedQuote = quoteKeys[randomIndex].c_str();
+            tft.println(selectedQuote);
+            
+            // Play the corresponding audio from the quote
+            TFT_UNLOCK();
+            const AudioQuote* audioQuote = getQuoteByText(selectedQuote);
+            if (audioQuote) {
+                playQuote(audioQuote);
+                LOG_INFO("TFT", "Playing audio for quote: '%s'", selectedQuote);
+            }
+            TFT_LOCK();
+        }
     } else if (level == "Moderate") {
         tft.setTextSize(2);
         tft.setTextColor(ILI9341_YELLOW);
