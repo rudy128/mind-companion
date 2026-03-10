@@ -17,23 +17,24 @@
 #define MQTT_CLIENT_H
 
 #include <Arduino.h>
+#include <freertos/semphr.h>
 
 // Shared state struct — replaces DashboardState from web_server.h
 // Populated by main.cpp (Core 1), read by MQTT task (Core 0).
 // Individual fields are atomic-width or tolerate tearing, so no
 // mutex is needed for the telemetry path.
 struct MqttDashState {
-    volatile float  gsrValue;
-    String stressLevel;
-    volatile int    heartBPM;
-    volatile bool   fingerPresent;
-    String sleepQuality;
-    volatile bool   emergencyActive;
-    volatile float  accelX, accelY, accelZ;
-    volatile float  temperature;
-    String lastVoiceCommand;
-    volatile bool   breathingActive;
-    volatile bool   cameraOpen;
+    float  gsrValue;
+    char   stressLevel[16];
+    int    heartBPM;
+    bool   fingerPresent;
+    char   sleepQuality[16];
+    bool   emergencyActive;
+    float  accelX, accelY, accelZ;
+    float  temperature;
+    char   lastVoiceCommand[128];
+    bool   breathingActive;
+    bool   cameraOpen;
 };
 
 // ── Lifecycle ────────────────────────────────────────────────
@@ -62,5 +63,10 @@ void mqttSetCommandCallback(MqttCmdCallback cb);
 
 // ── Status ───────────────────────────────────────────────────
 bool mqttIsConnected();
+
+// Mutex for thread-safe access to MqttDashState.
+// Created in mqttInit(). Core 1 takes it while writing dashState fields,
+// Core 0 MQTT task takes it while copying fields for JSON serialization.
+extern SemaphoreHandle_t mqttDashMutex;
 
 #endif // MQTT_CLIENT_H

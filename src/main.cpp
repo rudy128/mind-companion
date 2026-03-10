@@ -69,6 +69,11 @@ static bool          awakeNudgeFired   = false; // true after the 1-min nudge ha
 // ─── Emergency state ───────────────────────────────────────
 static bool emergencyFlag = false;
 
+// ─── Actuator mutex — protects actuator start/stop/update + emergencyFlag
+//     from races between Core 0 (MQTT command callback) and Core 1 (loop).
+//     Lock ordering: actuatorMutex → mqttDashMutex (never reversed).
+static SemaphoreHandle_t actuatorMutex = nullptr;
+
 // ─── Sensor-available flags (graceful degradation) ─────────
 static bool hasHeartRate = false;
 static bool hasMPU       = false;
@@ -99,6 +104,9 @@ void setup() {
     esp_task_wdt_init(30, true);   // 30 s timeout, panic on trigger
 
     LOG_INFO("MAIN", "M.I.N.D. Companion — Starting Up (Core %d)", xPortGetCoreID());
+
+    // ── Create actuator mutex ────────────────────────────
+    actuatorMutex = xSemaphoreCreateMutex();
 
     // ── TFT Display ──────────────────────────────────────
     tftInit();
@@ -161,17 +169,18 @@ void setup() {
     }
 
     // ── MQTT Client (replaces web server) ──────────────────
+    // ── MQTT Client (replaces web server) ──────────────────
     dashState.gsrValue         = 0;
-    dashState.stressLevel      = "Low";
+    strlcpy(dashState.stressLevel, "Low", sizeof(dashState.stressLevel));
     dashState.heartBPM         = 0;
     dashState.fingerPresent    = false;
-    dashState.sleepQuality     = "Awake";
+    strlcpy(dashState.sleepQuality, "Awake", sizeof(dashState.sleepQuality));
     dashState.emergencyActive  = false;
     dashState.accelX           = 0;
     dashState.accelY           = 0;
     dashState.accelZ           = 0;
     dashState.temperature      = 0;
-    dashState.lastVoiceCommand = "";
+    strlcpy(dashState.lastVoiceCommand, "", sizeof(dashState.lastVoiceCommand));
     dashState.breathingActive  = false;
     dashState.cameraOpen       = false;
 
@@ -259,7 +268,9 @@ static void speechTask(void* param) {
 
             if (transcript.length() > 0) {
                 tftUpdateSpeechStatus(transcript);
-                dashState.lastVoiceCommand = transcript;
+                xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
+                strlcpy(dashState.lastVoiceCommand, transcript.c_str(), sizeof(dashState.lastVoiceCommand));
+                xSemaphoreGive(mqttDashMutex);
 
                 LOG_INFO("SPEECH", "Parsing command from transcript...");
                 VoiceCommand cmd = commandParse(transcript);
@@ -275,10 +286,14 @@ static void speechTask(void* param) {
                     case CMD_HELP_ME:
                     case CMD_EMERGENCY:
                         LOG_WARN("SPEECH", "→ CMD_EMERGENCY: calling speakerAlarmStart()");
+                        xSemaphoreTake(actuatorMutex, portMAX_DELAY);
                         speakerAlarmStart();
-                        tftUpdateEmergency(true);
-                        dashState.emergencyActive = true;
                         emergencyFlag = true;
+                        xSemaphoreGive(actuatorMutex);
+                        tftUpdateEmergency(true);
+                        xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
+                        dashState.emergencyActive = true;
+                        xSemaphoreGive(mqttDashMutex);
                         LOG_WARN("SPEECH", "→ Emergency active, alarm started");
                         break;
                     case CMD_HOW_AM_I:
@@ -287,11 +302,15 @@ static void speechTask(void* param) {
                         break;
                     case CMD_STOP:
                         LOG_INFO("SPEECH", "→ CMD_STOP: stopping LED + alarm + emergency");
+                        xSemaphoreTake(actuatorMutex, portMAX_DELAY);
                         ledBreathingStop();
                         speakerAlarmStop();
-                        tftUpdateEmergency(false);
-                        dashState.emergencyActive = false;
                         emergencyFlag = false;
+                        xSemaphoreGive(actuatorMutex);
+                        tftUpdateEmergency(false);
+                        xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
+                        dashState.emergencyActive = false;
+                        xSemaphoreGive(mqttDashMutex);
                         break;
                     default:
                         LOG_DEBUG("SPEECH", "→ CMD_NONE — no keyword matched");
@@ -394,22 +413,28 @@ void loop() {
 
 if (buttonPressed && !prevButtonState) {   // just pressed
 
+    xSemaphoreTake(actuatorMutex, portMAX_DELAY);
     emergencyFlag = !emergencyFlag;  // TOGGLE state
 
     if (emergencyFlag) {
         LOG_ERROR("MAIN", "EMERGENCY ACTIVATED");
         speakerAlarmStart();
         tftUpdateEmergency(true);
+        xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
         dashState.emergencyActive = true;
+        xSemaphoreGive(mqttDashMutex);
         mqttPublishAlert(true);
     } 
     else {
         LOG_ERROR("MAIN", "EMERGENCY CLEARED");
         speakerAlarmStop();
         tftUpdateEmergency(false);
+        xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
         dashState.emergencyActive = false;
+        xSemaphoreGive(mqttDashMutex);
         mqttPublishAlert(false);
     }
+    xSemaphoreGive(actuatorMutex);
 }
 
 prevButtonState = buttonPressed;
@@ -443,10 +468,16 @@ prevButtonState = buttonPressed;
     }
 
     // ── Non-blocking actuator state machines ─────────────
-    dashState.breathingActive = ledBreathingUpdate();
+    xSemaphoreTake(actuatorMutex, portMAX_DELAY);
+    bool breathingNow = ledBreathingUpdate();
     speakerAlarmUpdate();
     speakerBuzzerUpdate();
     vibrationUpdate();
+    xSemaphoreGive(actuatorMutex);
+
+    xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
+    dashState.breathingActive = breathingNow;
+    xSemaphoreGive(mqttDashMutex);
 
     // =========================================================
     // B. 1-SECOND DISPLAY + DASHBOARD TICK
@@ -464,8 +495,10 @@ prevButtonState = buttonPressed;
             bool  finger = heartRateFingerPresent();
             int   bpm    = (int)heartRateGetBPM();
             tftUpdateHeartRate(bpm, finger);  // change-guarded inside
+            xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
             dashState.heartBPM      = bpm;
             dashState.fingerPresent = finger;
+            xSemaphoreGive(mqttDashMutex);
 
             Serial.printf("[TICK-HR] bpm=%d finger=%d\n", bpm, (int)finger);
 
@@ -491,10 +524,12 @@ prevButtonState = buttonPressed;
             int dispY = (int)mpuGetAccelY();
             int dispZ = (int)mpuGetAccelZ();
             tftUpdateMPU(dispX, dispY, dispZ); // change-guarded inside
+            xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
             dashState.accelX      = mpuGetAccelX();
             dashState.accelY      = mpuGetAccelY();
             dashState.accelZ      = mpuGetAccelZ();
             dashState.temperature = mpuGetTemperature();
+            xSemaphoreGive(mqttDashMutex);
 
             // Per-axis deltas for sleep detector (computed in mpu.cpp)
             float dx = mpuGetDeltaX();
@@ -507,7 +542,9 @@ prevButtonState = buttonPressed;
 
             String sq = sleepDetectorGetQuality();
             tftUpdateSleep(sq);               // change-guarded inside
-            dashState.sleepQuality = sq;
+            xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
+            strlcpy(dashState.sleepQuality, sq.c_str(), sizeof(dashState.sleepQuality));
+            xSemaphoreGive(mqttDashMutex);
 
             // ── Awake nudge — vibrate + open camera every 60 s ───
             // Tracks how long the child has been continuously awake.
@@ -539,7 +576,9 @@ prevButtonState = buttonPressed;
                 if ((now - awakeStartTime >= 60000UL) && !awakeNudgeFired) {
                     LOG_INFO("MAIN", "User awake ≥ 1 min — Vibrating + Camera ON");
                     vibrationPulse(300);         // short non-disruptive pulse
+                    xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
                     dashState.cameraOpen = true; // Turn camera ON (one-shot for dashboard)
+                    xSemaphoreGive(mqttDashMutex);
                     awakeNudgeFired = true;      // don't fire again until user sleeps
                 }
 
@@ -550,7 +589,9 @@ prevButtonState = buttonPressed;
                 awakeNudgeFired = false;
                 if (dashState.cameraOpen) {
                     LOG_INFO("MAIN", "User sleeping — Camera OFF");
+                    xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
                     dashState.cameraOpen = false;
+                    xSemaphoreGive(mqttDashMutex);
                 }
             }
         }
@@ -560,8 +601,10 @@ prevButtonState = buttonPressed;
         float  conductance = gsrReadConductance();
         String stress      = gsrGetStressLevel(conductance);
         tftUpdateStress(stress, conductance);
+        xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
         dashState.gsrValue    = conductance;
-        dashState.stressLevel = stress;
+        strlcpy(dashState.stressLevel, stress.c_str(), sizeof(dashState.stressLevel));
+        xSemaphoreGive(mqttDashMutex);
 
         // ── GSR High-stress → Play audio quote ──
         // GSR triggers audio quote playback when high stress is detected.
@@ -606,10 +649,13 @@ static void onAlarmOn()          { speakerAlarmStart(); }
 static void onAlarmOff()         { speakerAlarmStop(); }
 static void onVibrateRequest()   { vibrationPulse(800); }
 static void onClearEmergency()   {
+    // actuatorMutex is already held by the caller (onMqttCommand)
     emergencyFlag = false;
     speakerAlarmStop();
     tftUpdateEmergency(false);
+    xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
     dashState.emergencyActive = false;
+    xSemaphoreGive(mqttDashMutex);
     mqttPublishAlert(false);
     LOG_INFO("MAIN", "Emergency cleared via dashboard");
 }
@@ -621,6 +667,7 @@ static void onClearEmergency()   {
 static void onMqttCommand(const String& cmd) {
     LOG_INFO("MQTT_CMD", "Received command: %s", cmd.c_str());
 
+    xSemaphoreTake(actuatorMutex, portMAX_DELAY);
     if (cmd == "breathe") {
         ledBreathingStart();
     } else if (cmd == "alarm_on") {
@@ -634,4 +681,5 @@ static void onMqttCommand(const String& cmd) {
     } else {
         LOG_WARN("MQTT_CMD", "Unknown command: %s", cmd.c_str());
     }
+    xSemaphoreGive(actuatorMutex);
 }

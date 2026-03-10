@@ -41,6 +41,9 @@ static TaskHandle_t     _mqttTaskHandle = nullptr;
 static volatile bool    _alertPending   = false;
 static volatile bool    _alertValue     = false;
 
+// DashState mutex — protects String fields from tearing across cores
+SemaphoreHandle_t mqttDashMutex = nullptr;
+
 // ── MQTT message callback (incoming commands) ────────────────
 static void _onMessage(char* topic, byte* payload, unsigned int length) {
     char buf[256];
@@ -85,25 +88,40 @@ static bool _connect() {
 static void _publishState() {
     if (!_state || !_mqtt.connected()) return;
 
+    // Snapshot the shared state under mutex — hold time is just the
+    // struct copy, not the JSON serialization or network I/O.
+    MqttDashState snap;
+    if (mqttDashMutex && xSemaphoreTake(mqttDashMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        snap = *_state;
+        // Clear one-shot camera flag while we hold the mutex
+        if (_state->cameraOpen) {
+            _state->cameraOpen = false;
+        }
+        xSemaphoreGive(mqttDashMutex);
+    } else {
+        LOG_WARN("MQTT", "_publishState skipped — dashMutex timeout");
+        return;
+    }
+
     // DEBUG: unconditionally log every publish
     Serial.printf("[PUB] bpm=%d finger=%d gsr=%.1f\n",
-                  _state->heartBPM, (int)_state->fingerPresent,
-                  (float)_state->gsrValue);
+                  snap.heartBPM, (int)snap.fingerPresent,
+                  (float)snap.gsrValue);
 
     JsonDocument doc;
-    doc["bpm"]       = _state->heartBPM;
-    doc["finger"]    = _state->fingerPresent;
-    doc["gsr"]       = _state->gsrValue;
-    doc["stress"]    = _state->stressLevel;
-    doc["sleep"]     = _state->sleepQuality;
-    doc["emergency"] = _state->emergencyActive;
-    doc["ax"]        = serialized(String(_state->accelX, 2));
-    doc["ay"]        = serialized(String(_state->accelY, 2));
-    doc["az"]        = serialized(String(_state->accelZ, 2));
-    doc["temp"]      = serialized(String(_state->temperature, 1));
-    doc["voice"]     = _state->lastVoiceCommand;
-    doc["breathing"] = _state->breathingActive;
-    doc["camOpen"]   = _state->cameraOpen;
+    doc["bpm"]       = snap.heartBPM;
+    doc["finger"]    = snap.fingerPresent;
+    doc["gsr"]       = snap.gsrValue;
+    doc["stress"]    = snap.stressLevel;
+    doc["sleep"]     = snap.sleepQuality;
+    doc["emergency"] = snap.emergencyActive;
+    doc["ax"]        = serialized(String(snap.accelX, 2));
+    doc["ay"]        = serialized(String(snap.accelY, 2));
+    doc["az"]        = serialized(String(snap.accelZ, 2));
+    doc["temp"]      = serialized(String(snap.temperature, 1));
+    doc["voice"]     = snap.lastVoiceCommand;
+    doc["breathing"] = snap.breathingActive;
+    doc["camOpen"]   = snap.cameraOpen;
     doc["ip"]        = WiFi.localIP().toString();
     doc["heap"]      = esp_get_free_heap_size();
     doc["uptime"]    = millis() / 1000;
@@ -113,11 +131,6 @@ static void _publishState() {
     bool ok = _mqtt.publish(MQTT_TOPIC_DATA, (const uint8_t*)json, (unsigned int)len, false);
     if (!ok) {
         LOG_WARN("MQTT", "publish(mind/data) failed — connected=%d", _mqtt.connected());
-    }
-
-    // Clear one-shot camera flag after publishing
-    if (_state->cameraOpen) {
-        _state->cameraOpen = false;
     }
 }
 
@@ -201,9 +214,15 @@ static void _mqttTask(void* param) {
 
 void mqttInit(MqttDashState* state) {
     _state = state;
+
+    // Create dashState mutex once
+    if (!mqttDashMutex) {
+        mqttDashMutex = xSemaphoreCreateMutex();
+    }
+
     _mqtt.setServer(MQTT_SERVER, MQTT_PORT);
     _mqtt.setCallback(_onMessage);
-    _mqtt.setBufferSize(512);
+    _mqtt.setBufferSize(1024);
     _mqtt.setKeepAlive(60);
     _mqtt.setSocketTimeout(2);     // 2 s — OK because we're on our own core now
     _wifiClient.setTimeout(500);   // 500 ms — won't stall sensors
