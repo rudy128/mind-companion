@@ -363,14 +363,11 @@ void loop() {
     //    These are fast (µs range) and must run continuously.
     // =========================================================
 
-    // ── Heart Rate — drain MAX30102 FIFO periodically ───────
-    // At 100Hz / 4× avg the effective rate is 25 samples/sec.
-    // The 32-sample FIFO fills in ~1.3 s. Reading every 50ms keeps
-    // it drained with margin to spare.
-    static unsigned long lastHrRead = 0;
-    if (hasHeartRate && (now - lastHrRead >= 50UL)) {
-        lastHrRead = now;
-        heartRateUpdate();  // reads all queued samples
+    // ── Heart Rate — simple direct read every loop iteration ───
+    // The simple getIR() approach (no FIFO drain) needs to be
+    // called as frequently as possible for reliable beat detection.
+    if (hasHeartRate) {
+        heartRateUpdate();
     }
 
     // ── MPU6050 — read every 50ms for sleep detector ──────

@@ -1,44 +1,25 @@
-// =============================================================
-// Connection Status — MQTT broker connection indicator
-// =============================================================
 "use client";
 
 import type { ConnectionState } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
+import { Wifi, WifiOff, Loader2, CircleAlert } from "lucide-react";
 
-const STATUS_CONFIG: Record<
+const STATUS_MAP: Record<
   ConnectionState,
-  { color: string; label: string; dot: string }
+  { label: string; variant: "default" | "secondary" | "destructive" | "outline"; Icon: typeof Wifi }
 > = {
-  connected: {
-    color: "text-accent-green",
-    label: "Connected",
-    dot: "bg-green-500",
-  },
-  connecting: {
-    color: "text-accent-yellow",
-    label: "Connecting…",
-    dot: "bg-yellow-500 animate-pulse",
-  },
-  disconnected: {
-    color: "text-muted",
-    label: "Disconnected",
-    dot: "bg-zinc-500",
-  },
-  error: {
-    color: "text-accent-red",
-    label: "Error",
-    dot: "bg-red-500",
-  },
+  connected:    { label: "Connected",     variant: "default",     Icon: Wifi },
+  connecting:   { label: "Connecting",    variant: "secondary",   Icon: Loader2 },
+  disconnected: { label: "Disconnected",  variant: "outline",     Icon: WifiOff },
+  error:        { label: "Error",         variant: "destructive", Icon: CircleAlert },
 };
 
 export function ConnectionStatus({ state }: { state: ConnectionState }) {
-  const cfg = STATUS_CONFIG[state];
+  const { label, variant, Icon } = STATUS_MAP[state];
   return (
-    <div className="flex items-center gap-2">
-      <span className={`inline-block h-2.5 w-2.5 rounded-full ${cfg.dot}`} />
-      <span className={`text-sm font-medium ${cfg.color}`}>
-        MQTT: {cfg.label}
-      </span>
-    </div>
+    <Badge variant={variant} className="gap-1.5 px-2.5 py-1">
+      <Icon className={`h-3 w-3 ${state === "connecting" ? "animate-spin" : ""}`} />
+      <span className="text-xs">MQTT: {label}</span>
+    </Badge>
   );
 }

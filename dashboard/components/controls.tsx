@@ -1,47 +1,63 @@
-// =============================================================
-// Controls Panel — send commands to MCU via MQTT
-// =============================================================
 "use client";
 
 import type { Command } from "@/lib/types";
-import { Card } from "./card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Lightbulb,
+  BellRing,
+  BellOff,
+  Vibrate,
+  Sliders,
+} from "lucide-react";
 
-interface ControlButton {
+interface ControlDef {
   label: string;
   cmd: Command["cmd"];
-  icon: string;
-  color: string;
-  hoverColor: string;
+  Icon: typeof Lightbulb;
+  variant: "default" | "destructive" | "secondary" | "outline";
+  tooltip: string;
 }
 
-const BUTTONS: ControlButton[] = [
+const CONTROLS: ControlDef[] = [
   {
     label: "Breathe",
     cmd: "breathe",
-    icon: "💡",
-    color: "bg-cyan-600/20 text-cyan-400 border-cyan-500/30",
-    hoverColor: "hover:bg-cyan-600/40",
+    Icon: Lightbulb,
+    variant: "default",
+    tooltip: "Activate LED breathing pattern",
   },
   {
     label: "Alarm ON",
     cmd: "alarm_on",
-    icon: "🔔",
-    color: "bg-red-600/20 text-red-400 border-red-500/30",
-    hoverColor: "hover:bg-red-600/40",
+    Icon: BellRing,
+    variant: "destructive",
+    tooltip: "Start emergency alarm",
   },
   {
     label: "Alarm OFF",
     cmd: "alarm_off",
-    icon: "🔕",
-    color: "bg-zinc-600/20 text-zinc-400 border-zinc-500/30",
-    hoverColor: "hover:bg-zinc-600/40",
+    Icon: BellOff,
+    variant: "secondary",
+    tooltip: "Stop emergency alarm",
   },
   {
     label: "Vibrate",
     cmd: "vibrate",
-    icon: "📳",
-    color: "bg-purple-600/20 text-purple-400 border-purple-500/30",
-    hoverColor: "hover:bg-purple-600/40",
+    Icon: Vibrate,
+    variant: "outline",
+    tooltip: "Trigger vibration motor",
   },
 ];
 
@@ -53,25 +69,39 @@ export function ControlsPanel({
   breathingActive: boolean;
 }) {
   return (
-    <Card title="Device Controls" icon="🎮">
-      <div className="grid grid-cols-2 gap-2">
-        {BUTTONS.map((btn) => (
-          <button
-            key={btn.cmd}
-            onClick={() => sendCommand(btn.cmd)}
-            className={`relative rounded-lg border px-3 py-3 text-sm font-medium transition-colors cursor-pointer ${btn.color} ${btn.hoverColor}`}
-          >
-            <span className="mr-1.5">{btn.icon}</span>
-            {btn.label}
-            {btn.cmd === "breathe" && breathingActive && (
-              <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-cyan-400 animate-breathe" />
-            )}
-          </button>
-        ))}
-      </div>
-      <p className="mt-3 text-xs text-muted">
-        Commands are sent instantly via MQTT to the device.
-      </p>
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Sliders className="h-4 w-4 text-muted-foreground" />
+          <CardTitle>Device Controls</CardTitle>
+        </div>
+        <CardDescription>Send commands via MQTT</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-2">
+          {CONTROLS.map((ctrl) => (
+            <Tooltip key={ctrl.cmd}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={ctrl.variant}
+                  size="sm"
+                  className="relative w-full justify-start gap-2"
+                  onClick={() => sendCommand(ctrl.cmd)}
+                >
+                  <ctrl.Icon className="h-4 w-4" />
+                  {ctrl.label}
+                  {ctrl.cmd === "breathe" && breathingActive && (
+                    <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary animate-breathe" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{ctrl.tooltip}</p>
+              </TooltipContent>
+            </Tooltip>
+          ))}
+        </div>
+      </CardContent>
     </Card>
   );
 }

@@ -1,7 +1,8 @@
-// =============================================================
-// Emergency Banner — Full-width flashing alert
-// =============================================================
 "use client";
+
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle } from "lucide-react";
 
 export function EmergencyBanner({
   active,
@@ -13,22 +14,21 @@ export function EmergencyBanner({
   if (!active) return null;
 
   return (
-    <div className="animate-flash rounded-xl border-2 border-red-500 bg-red-500/20 px-6 py-4 flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <span className="text-3xl">🚨</span>
+    <Alert variant="destructive" className="animate-flash border-2">
+      <AlertTriangle className="h-5 w-5" />
+      <div className="flex w-full items-center justify-between">
         <div>
-          <p className="text-lg font-bold text-red-400">EMERGENCY ACTIVE</p>
-          <p className="text-sm text-red-300/80">
-            Alarm is sounding on the device
-          </p>
+          <AlertTitle className="text-base font-semibold">
+            Emergency Active
+          </AlertTitle>
+          <AlertDescription>
+            Alarm is sounding on the device. Press clear to deactivate.
+          </AlertDescription>
         </div>
+        <Button variant="destructive" size="sm" onClick={onClear}>
+          Clear Emergency
+        </Button>
       </div>
-      <button
-        onClick={onClear}
-        className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 transition-colors cursor-pointer"
-      >
-        Clear Emergency
-      </button>
-    </div>
+    </Alert>
   );
 }

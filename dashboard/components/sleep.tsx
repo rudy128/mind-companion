@@ -1,30 +1,47 @@
-// =============================================================
-// Sleep Quality Card — movement-based sleep classification
-// =============================================================
 "use client";
 
-import { Card } from "./card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Moon } from "lucide-react";
 
-const SLEEP_CONFIG: Record<string, { color: string; bg: string; emoji: string }> = {
-  "Deep Sleep": { color: "text-purple-400", bg: "bg-purple-500/20", emoji: "😴" },
-  "Light Sleep": { color: "text-blue-400", bg: "bg-blue-500/20", emoji: "💤" },
-  Restless: { color: "text-yellow-400", bg: "bg-yellow-500/20", emoji: "😣" },
-  Awake: { color: "text-cyan-400", bg: "bg-cyan-500/20", emoji: "👀" },
+const SLEEP_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
+  "Deep Sleep":  "default",
+  "Light Sleep": "secondary",
+  Restless:      "outline",
+  Awake:         "outline",
+};
+
+const SLEEP_DESC: Record<string, string> = {
+  "Deep Sleep":  "Minimal movement detected",
+  "Light Sleep": "Low movement detected",
+  Restless:      "Frequent movement detected",
+  Awake:         "Active movement",
 };
 
 export function SleepCard({ quality }: { quality: string }) {
-  const cfg = SLEEP_CONFIG[quality] ?? SLEEP_CONFIG.Awake;
+  const variant = SLEEP_VARIANT[quality] ?? "outline";
+  const description = SLEEP_DESC[quality] ?? "Monitoring";
 
   return (
-    <Card title="Sleep Quality" icon="😴">
-      <div className="flex items-center gap-3">
-        <span className="text-4xl">{cfg.emoji}</span>
-        <span
-          className={`inline-block rounded-full px-3 py-1 text-sm font-bold ${cfg.color} ${cfg.bg}`}
-        >
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Moon className="h-4 w-4 text-muted-foreground" />
+          <CardTitle>Sleep Quality</CardTitle>
+        </div>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Badge variant={variant} className="text-sm px-3 py-1">
           {quality}
-        </span>
-      </div>
+        </Badge>
+      </CardContent>
     </Card>
   );
 }

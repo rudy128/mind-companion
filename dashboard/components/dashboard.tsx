@@ -1,10 +1,3 @@
-// =============================================================
-// Dashboard — Main client component
-// =============================================================
-// Connects to MQTT broker via WebSocket, subscribes to all
-// mind/* topics, and renders the full dashboard with real-time
-// updates. No HTTP polling — pure push via MQTT.
-// =============================================================
 "use client";
 
 import { useState, useEffect } from "react";
@@ -19,18 +12,16 @@ import { CameraFeed } from "@/components/camera-feed";
 import { ControlsPanel } from "@/components/controls";
 import { LogsPanel } from "@/components/logs";
 import { DeviceInfoCard } from "@/components/device-info";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Activity, Loader2, WifiOff } from "lucide-react";
 
-/**
- * Default ESP32 IP — user can change via the input field.
- * Camera stream connects directly to this IP on port 81.
- */
 const DEFAULT_ESP_IP = "172.20.10.8";
 
 export function Dashboard() {
   const { data, logs, connection, sendCommand, clearLogs } = useMqtt();
   const [espIp, setEspIp] = useState(DEFAULT_ESP_IP);
 
-  // Auto-update ESP32 IP from MQTT data when available
   useEffect(() => {
     if (data?.ip && data.ip !== "0.0.0.0") {
       setEspIp(data.ip);
@@ -38,101 +29,110 @@ export function Dashboard() {
   }, [data?.ip]);
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-6 lg:p-8">
-      {/* ── Header ─────────────────────────────────────── */}
-      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            🧠 M.I.N.D. Companion
-          </h1>
-          <p className="text-sm text-muted">
-            Real-time mental wellness monitoring
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          {/* ESP32 IP input for camera */}
-          <div className="flex items-center gap-2">
-            <label htmlFor="esp-ip" className="text-xs text-muted">
-              ESP32 IP:
-            </label>
-            <input
-              id="esp-ip"
-              type="text"
-              value={espIp}
-              onChange={(e) => setEspIp(e.target.value)}
-              className="w-36 rounded-md border border-card-border bg-card px-2 py-1 text-xs font-mono text-foreground focus:border-accent-cyan focus:outline-none"
-              placeholder="192.168.x.x"
-            />
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="mx-auto flex h-14 max-w-screen-2xl items-center justify-between px-4 md:px-6 lg:px-8">
+          <div className="flex items-center gap-3">
+            <Activity className="h-5 w-5 text-primary" />
+            <div>
+              <h1 className="text-base font-semibold tracking-tight">
+                M.I.N.D. Companion
+              </h1>
+              <p className="hidden text-xs text-muted-foreground sm:block">
+                Real-time wellness monitoring
+              </p>
+            </div>
           </div>
-          <ConnectionStatus state={connection} />
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <label htmlFor="esp-ip" className="text-xs text-muted-foreground">
+                Device IP
+              </label>
+              <Input
+                id="esp-ip"
+                type="text"
+                value={espIp}
+                onChange={(e) => setEspIp(e.target.value)}
+                className="h-7 w-36 font-mono text-xs"
+                placeholder="192.168.x.x"
+              />
+            </div>
+            <Separator orientation="vertical" className="h-6" />
+            <ConnectionStatus state={connection} />
+          </div>
         </div>
       </header>
 
-      {/* ── Emergency Banner ───────────────────────────── */}
-      {data?.emergency && (
-        <div className="mb-6">
-          <EmergencyBanner
-            active={true}
-            onClear={() => sendCommand("clear_emergency")}
-          />
+      <main className="mx-auto max-w-screen-2xl p-4 md:p-6 lg:p-8">
+        {/* Emergency Banner */}
+        {data?.emergency && (
+          <div className="mb-6">
+            <EmergencyBanner
+              active={true}
+              onClear={() => sendCommand("clear_emergency")}
+            />
+          </div>
+        )}
+
+        {/* Waiting: connected but no data */}
+        {!data && connection === "connected" && (
+          <div className="mb-6 flex flex-col items-center justify-center rounded-lg border border-border bg-card p-12 text-center">
+            <Loader2 className="mb-3 h-8 w-8 animate-spin text-muted-foreground" />
+            <p className="text-sm font-medium">Waiting for sensor data</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Data will appear when the ESP32 starts publishing.
+            </p>
+          </div>
+        )}
+
+        {/* Waiting: not connected */}
+        {!data && connection !== "connected" && (
+          <div className="mb-6 flex flex-col items-center justify-center rounded-lg border border-border bg-card p-12 text-center">
+            <WifiOff className="mb-3 h-8 w-8 text-muted-foreground" />
+            <p className="text-sm font-medium">Connecting to MQTT broker</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Ensure Mosquitto is running on{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                localhost:9001
+              </code>
+            </p>
+          </div>
+        )}
+
+        {/* Sensor Grid */}
+        {data && (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <HeartRateCard bpm={data.bpm} fingerDetected={data.finger} />
+            <StressCard stressLevel={data.stress} gsrValue={data.gsr} />
+            <SleepCard quality={data.sleep} />
+            <AccelerometerCard
+              ax={Number(data.ax)}
+              ay={Number(data.ay)}
+              az={Number(data.az)}
+              temp={Number(data.temp)}
+            />
+            <CameraFeed espIp={espIp} />
+            <ControlsPanel
+              sendCommand={sendCommand}
+              breathingActive={data.breathing}
+            />
+            <DeviceInfoCard
+              heap={data.heap}
+              uptime={data.uptime}
+              voiceCommand={data.voice}
+            />
+          </div>
+        )}
+
+        {/* Logs */}
+        <div className="mt-6">
+          <LogsPanel logs={logs} onClear={clearLogs} />
         </div>
-      )}
+      </main>
 
-      {/* ── Waiting state ──────────────────────────────── */}
-      {!data && connection === "connected" && (
-        <div className="mb-6 rounded-xl border border-card-border bg-card p-8 text-center">
-          <p className="text-lg text-muted">⏳ Waiting for sensor data from device…</p>
-          <p className="mt-1 text-sm text-zinc-600">
-            Data will appear automatically when the ESP32 starts publishing.
-          </p>
-        </div>
-      )}
-
-      {!data && connection !== "connected" && (
-        <div className="mb-6 rounded-xl border border-card-border bg-card p-8 text-center">
-          <p className="text-lg text-muted">🔌 Connecting to MQTT broker…</p>
-          <p className="mt-1 text-sm text-zinc-600">
-            Make sure Mosquitto is running on <code className="font-mono text-accent-cyan">localhost:9001</code> (WebSocket)
-          </p>
-        </div>
-      )}
-
-      {/* ── Sensor Grid ────────────────────────────────── */}
-      {data && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {/* Row 1: Vital signs */}
-          <HeartRateCard bpm={data.bpm} fingerDetected={data.finger} />
-          <StressCard stressLevel={data.stress} gsrValue={data.gsr} />
-          <SleepCard quality={data.sleep} />
-          <AccelerometerCard
-            ax={Number(data.ax)}
-            ay={Number(data.ay)}
-            az={Number(data.az)}
-            temp={Number(data.temp)}
-          />
-
-          {/* Row 2: Camera + Controls + Device Info */}
-          <CameraFeed espIp={espIp} />
-          <ControlsPanel
-            sendCommand={sendCommand}
-            breathingActive={data.breathing}
-          />
-          <DeviceInfoCard
-            heap={data.heap}
-            uptime={data.uptime}
-            voiceCommand={data.voice}
-          />
-        </div>
-      )}
-
-      {/* ── Logs Panel ─────────────────────────────────── */}
-      <div className="mt-6">
-        <LogsPanel logs={logs} onClear={clearLogs} />
-      </div>
-
-      {/* ── Footer ─────────────────────────────────────── */}
-      <footer className="mt-8 text-center text-xs text-zinc-600">
-        M.I.N.D. Companion • ESP32-S3 → MQTT → Dashboard • No HTTP polling
+      <footer className="border-t border-border py-4 text-center text-xs text-muted-foreground">
+        M.I.N.D. Companion &middot; ESP32-S3 &rarr; MQTT &rarr; Dashboard
       </footer>
     </div>
   );
