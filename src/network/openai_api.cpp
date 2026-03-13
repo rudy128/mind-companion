@@ -105,6 +105,12 @@ String openaiTranscribe(int16_t* pcmData, size_t pcmBytes) {
     }
     client.stop();
 
+    // Debug: print raw response
+    Serial.println("[AI] Response length: " + String(response.length()));
+    if (response.length() < 500) {
+        Serial.println("[AI] Full response: " + response);
+    }
+
     // Extract JSON from response (after \r\n\r\n)
     int jsonStart = response.indexOf("\r\n\r\n");
     if (jsonStart < 0) jsonStart = 0; else jsonStart += 4;
@@ -114,11 +120,21 @@ String openaiTranscribe(int16_t* pcmData, size_t pcmBytes) {
     int braceStart = jsonBody.indexOf('{');
     if (braceStart > 0) jsonBody = jsonBody.substring(braceStart);
 
+    // Debug: print JSON body
+    Serial.println("[AI] JSON body: " + jsonBody.substring(0, 300));
+
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, jsonBody);
     if (err) {
         Serial.println("[AI] JSON parse error: " + String(err.c_str()));
         Serial.println("[AI] Raw: " + jsonBody.substring(0, 200));
+        return "";
+    }
+
+    // Check for API error
+    if (doc.containsKey("error")) {
+        String errorMsg = doc["error"]["message"] | "Unknown error";
+        Serial.println("[AI] API Error: " + errorMsg);
         return "";
     }
 

@@ -58,4 +58,5 @@ export const TOPICS = {
   LOGS: "mind/logs",
   ALERT: "mind/alert",
   CMD: "mind/cmd",
+  AUDIO: "mind/audio",
 } as const;

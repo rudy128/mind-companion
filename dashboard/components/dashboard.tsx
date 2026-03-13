@@ -12,6 +12,7 @@ import { CameraFeed } from "@/components/camera-feed";
 import { ControlsPanel } from "@/components/controls";
 import { LogsPanel } from "@/components/logs";
 import { DeviceInfoCard } from "@/components/device-info";
+import { AudioDebug } from "@/components/audio-debug";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Activity, Loader2, WifiOff } from "lucide-react";
@@ -19,7 +20,7 @@ import { Activity, Loader2, WifiOff } from "lucide-react";
 const DEFAULT_ESP_IP = "172.20.10.8";
 
 export function Dashboard() {
-  const { data, logs, connection, sendCommand, clearLogs } = useMqtt();
+  const { data, logs, connection, audioBase64, sendCommand, clearLogs, clearAudio } = useMqtt();
   const [espIp, setEspIp] = useState(DEFAULT_ESP_IP);
 
   useEffect(() => {
@@ -122,6 +123,7 @@ export function Dashboard() {
               uptime={data.uptime}
               voiceCommand={data.voice}
             />
+            <AudioDebug audioBase64={audioBase64} onClear={clearAudio} />
           </div>
         )}
 

@@ -35,10 +35,14 @@ export interface MqttState {
   logs: LogEntry[];
   /** MQTT connection status */
   connection: ConnectionState;
+  /** Latest recorded audio as base64 WAV */
+  audioBase64: string | null;
   /** Send a command to the MCU */
   sendCommand: (cmd: Command["cmd"]) => void;
   /** Clear the local log buffer */
   clearLogs: () => void;
+  /** Clear the audio buffer */
+  clearAudio: () => void;
 }
 
 export function useMqtt(): MqttState {
@@ -46,6 +50,7 @@ export function useMqtt(): MqttState {
   const [data, setData] = useState<SensorData | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [connection, setConnection] = useState<ConnectionState>("disconnected");
+  const [audioBase64, setAudioBase64] = useState<string | null>(null);
 
   // ── Connect on mount, disconnect on unmount ────────────
   useEffect(() => {
@@ -65,11 +70,11 @@ export function useMqtt(): MqttState {
       setConnection("connected");
       // Subscribe to all mind/* topics
       client.subscribe(
-        [TOPICS.DATA, TOPICS.LOGS, TOPICS.ALERT],
+        [TOPICS.DATA, TOPICS.LOGS, TOPICS.ALERT, TOPICS.AUDIO],
         { qos: 0 },
         (err) => {
           if (err) console.error("[MQTT] Subscribe error:", err);
-          else console.log("[MQTT] Subscribed to:", TOPICS.DATA, TOPICS.LOGS, TOPICS.ALERT);
+          else console.log("[MQTT] Subscribed to:", TOPICS.DATA, TOPICS.LOGS, TOPICS.ALERT, TOPICS.AUDIO);
         },
       );
     });
@@ -105,7 +110,13 @@ export function useMqtt(): MqttState {
             break;
         }
       } catch (e) {
-        console.error("[MQTT] JSON parse error:", e, "raw:", raw);
+        // Check if it's the audio topic (raw base64, not JSON)
+        if (topic === TOPICS.AUDIO) {
+          console.log("[MQTT] Received audio:", raw.length, "bytes base64");
+          setAudioBase64(raw);
+          return;
+        }
+        console.error("[MQTT] JSON parse error:", e, "raw:", raw.substring(0, 100));
       }
     });
 
@@ -128,5 +139,10 @@ export function useMqtt(): MqttState {
     setLogs([]);
   }, []);
 
-  return { data, logs, connection, sendCommand, clearLogs };
+  // ── Clear audio ────────────────────────────────────────
+  const clearAudio = useCallback(() => {
+    setAudioBase64(null);
+  }, []);
+
+  return { data, logs, connection, audioBase64, sendCommand, clearLogs, clearAudio };
 }

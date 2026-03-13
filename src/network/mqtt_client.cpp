@@ -272,6 +272,90 @@ void mqttPublishAlert(bool active) {
     _alertPending = true;
 }
 
+// Base64 encoding table
+static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+// Publish recorded audio as base64 WAV to mind/audio (EXACT - no downsampling)
+void mqttPublishAudio(int16_t* pcmData, size_t pcmBytes) {
+    if (!_mqtt.connected() || !pcmData || pcmBytes == 0) return;
+    
+    LOG_INFO("MQTT", "Sending audio to dashboard (%u bytes PCM, no downsampling)...", pcmBytes);
+    
+    // Build WAV header (44 bytes) for 16kHz mono 16-bit (exact as recorded)
+    uint8_t wavHeader[44];
+    uint32_t sampleRate = MIC_SAMPLE_RATE;  // 16000 Hz - exact
+    uint32_t fileSize = pcmBytes + 36;
+    memcpy(wavHeader,      "RIFF", 4);
+    *(uint32_t*)(wavHeader + 4)  = fileSize;
+    memcpy(wavHeader + 8,  "WAVEfmt ", 8);
+    *(uint32_t*)(wavHeader + 16) = 16;
+    *(uint16_t*)(wavHeader + 20) = 1;               // PCM
+    *(uint16_t*)(wavHeader + 22) = 1;               // mono
+    *(uint32_t*)(wavHeader + 24) = sampleRate;
+    *(uint32_t*)(wavHeader + 28) = sampleRate * 2;  // byte rate
+    *(uint16_t*)(wavHeader + 32) = 2;               // block align
+    *(uint16_t*)(wavHeader + 34) = 16;              // bits per sample
+    memcpy(wavHeader + 36, "data", 4);
+    *(uint32_t*)(wavHeader + 40) = pcmBytes;
+    
+    // Total WAV size = header + PCM data
+    size_t wavSize = 44 + pcmBytes;
+    
+    // Allocate WAV buffer in PSRAM
+    uint8_t* wavData = (uint8_t*)ps_malloc(wavSize);
+    if (!wavData) {
+        LOG_ERROR("MQTT", "Failed to allocate WAV buffer (%u bytes)", wavSize);
+        return;
+    }
+    memcpy(wavData, wavHeader, 44);
+    memcpy(wavData + 44, pcmData, pcmBytes);
+    
+    // Base64 encode - output is ~4/3 the input size
+    size_t b64Size = ((wavSize + 2) / 3) * 4 + 1;
+    char* b64 = (char*)ps_malloc(b64Size);
+    if (!b64) {
+        free(wavData);
+        LOG_ERROR("MQTT", "Failed to allocate base64 buffer (%u bytes)", b64Size);
+        return;
+    }
+    
+    // Encode to base64
+    size_t j = 0;
+    for (size_t i = 0; i < wavSize; i += 3) {
+        uint32_t octet_a = i < wavSize ? wavData[i] : 0;
+        uint32_t octet_b = i + 1 < wavSize ? wavData[i + 1] : 0;
+        uint32_t octet_c = i + 2 < wavSize ? wavData[i + 2] : 0;
+        uint32_t triple = (octet_a << 16) | (octet_b << 8) | octet_c;
+        
+        b64[j++] = b64_table[(triple >> 18) & 0x3F];
+        b64[j++] = b64_table[(triple >> 12) & 0x3F];
+        b64[j++] = (i + 1 < wavSize) ? b64_table[(triple >> 6) & 0x3F] : '=';
+        b64[j++] = (i + 2 < wavSize) ? b64_table[triple & 0x3F] : '=';
+    }
+    b64[j] = '\0';
+    
+    free(wavData);
+    
+    LOG_INFO("MQTT", "Publishing %u bytes base64 audio (~%u KB)...", j, j/1024);
+    
+    // Use PubSubClient's beginPublish for large payloads
+    if (_mqtt.beginPublish("mind/audio", j, false)) {
+        // Send in chunks
+        size_t chunkSize = 512;
+        for (size_t i = 0; i < j; i += chunkSize) {
+            size_t len = (i + chunkSize > j) ? (j - i) : chunkSize;
+            _mqtt.write((uint8_t*)(b64 + i), len);
+            vTaskDelay(1);  // Yield to prevent watchdog
+        }
+        _mqtt.endPublish();
+        LOG_INFO("MQTT", "Audio published to mind/audio");
+    } else {
+        LOG_ERROR("MQTT", "beginPublish failed");
+    }
+    
+    free(b64);
+}
+
 void mqttSetCommandCallback(MqttCmdCallback cb) {
     _cmdCallback = cb;
 }

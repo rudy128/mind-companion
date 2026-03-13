@@ -54,6 +54,9 @@ void mqttPublishLog(const char* level, const char* tag, const char* msg);
 // Publish emergency alert change to mind/alert
 void mqttPublishAlert(bool active);
 
+// Publish recorded audio as base64 WAV to mind/audio (for debugging)
+void mqttPublishAudio(int16_t* pcmData, size_t pcmBytes);
+
 // ── Command callback registration ───────────────────────────
 // Commands received on mind/cmd are JSON: {"cmd":"breathe"}, {"cmd":"alarm_on"}, etc.
 // NOTE: The callback runs on Core 0.  Keep it short or use a queue to
