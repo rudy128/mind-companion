@@ -154,7 +154,8 @@ void setup() {
     vibrationInit();
 
     // ── Microphone ───────────────────────────────────────
-    micInit();   // Initialize I2S for recording (driver installed on-demand)
+    // Time-sliced with speaker — audio pauses during recording
+    micInit();
 
     // ── Sleep Detector ───────────────────────────────────
     sleepDetectorInit();
@@ -203,6 +204,7 @@ void setup() {
     awakeStartTime     = 0;  // Not awake until detected
 
     // ── Speech task on Core 0 — waits for double-press trigger ──
+    // Time-sliced I2S: audio pauses during recording
     xTaskCreatePinnedToCore(
         speechTask,         // function
         "speech",           // name
@@ -220,7 +222,7 @@ void setup() {
 // ============================================================
 //  SPEECH TASK  (Core 0 — event-driven, waits for trigger)
 //  Triggered by double-press on button. Records, transcribes,
-//  then goes back to sleep. Never touches sensors or TFT.
+//  then goes back to sleep. Uses time-sliced I2S with speaker.
 // ============================================================
 static void speechTask(void* param) {
     LOG_INFO("SPEECH", "Task started on Core 0 — waiting for trigger");
@@ -250,12 +252,23 @@ static void speechTask(void* param) {
             continue;
         }
 
+        // ══════════════════════════════════════════════════════
+        // PAUSE AUDIO — Release I2S for microphone
+        // ══════════════════════════════════════════════════════
+        audioQuotesPause();
+        vTaskDelay(pdMS_TO_TICKS(200));  // Let I2S fully release
+
         LOG_INFO("SPEECH", "Recording %d s (buf=%u bytes)...", 
                  MIC_RECORD_SECONDS, sizeof(audioBuffer));
 
         tftShowListening(true);
         size_t bytesRead = micRecord(audioBuffer, sizeof(audioBuffer));
         tftShowListening(false);
+
+        // ══════════════════════════════════════════════════════
+        // RESUME AUDIO — Re-initialize I2S for speaker
+        // ══════════════════════════════════════════════════════
+        audioQuotesResume();
 
         LOG_INFO("SPEECH", "micRecord returned %u bytes", bytesRead);
 
@@ -390,7 +403,7 @@ void loop() {
 
     // =========================================================
     // BUTTON HANDLING — Single press = emergency, Double = voice
-    // Non-blocking state machine with debounce
+    // Time-sliced I2S: audio pauses during recording
     // =========================================================
     bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
     

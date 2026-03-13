@@ -1,5 +1,5 @@
 // =============================================================
-// Audio Quotes — EXACT copy of working script + hashmap lookup
+// Audio Quotes — Time-sliced I2S sharing with microphone
 // Runs on Core 0 as dedicated task for smooth playback
 // =============================================================
 #include "audio_quotes.h"
@@ -17,6 +17,7 @@ Audio audio;
 // Task handle for audio on Core 0
 static TaskHandle_t audioTaskHandle = nullptr;
 static volatile bool audioTaskRunning = false;
+static volatile bool audioPaused = false;  // For time-slicing with mic
 
 // Queue for file requests
 static volatile bool playRequested = false;
@@ -30,6 +31,12 @@ void audioTask(void* param) {
   audioTaskRunning = true;
   
   for (;;) {
+    // If paused (mic is recording), just wait
+    if (audioPaused) {
+      vTaskDelay(pdMS_TO_TICKS(10));
+      continue;
+    }
+    
     // Check if a new file play was requested
     if (playRequested) {
       playRequested = false;
@@ -48,16 +55,50 @@ void audioTask(void* param) {
   }
 }
 
+// Pause audio - MUST call before mic recording
+void audioQuotesPause() {
+  if (audioPaused) return;
+  
+  Serial.println("[AUDIO] Pausing for mic recording...");
+  audioPaused = true;
+  
+  // Stop any current playback
+  audio.stopSong();
+  
+  // Give time for I2S to release
+  vTaskDelay(pdMS_TO_TICKS(100));
+  
+  Serial.println("[AUDIO] Paused - I2S0 released");
+}
+
+// Resume audio - call after mic recording done
+void audioQuotesResume() {
+  if (!audioPaused) return;
+  
+  Serial.println("[AUDIO] Resuming audio system...");
+  
+  // Re-initialize I2S for speaker
+  audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DIN);
+  audio.setVolume(40);
+  audio.forceMono(true);
+  
+  audioPaused = false;
+  Serial.println("[AUDIO] Resumed");
+}
+
+// Check if audio is paused
+bool audioQuotesIsPaused() {
+  return audioPaused;
+}
+
 void audioQuotesInit() {
   // I2S setup
   audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DIN);
-  audio.setVolume(40); // Increase volume (0-21)
+  audio.setVolume(40);
 
-  audio.forceMono(true);        // mono speaker
+  audio.forceMono(true);
   audio.setI2SCommFMT_LSB(false);
-  // Optional: Set I2S buffer size for smoother playback
   audio.i2s_mclk_pin_select(I2S_PIN_NO_CHANGE);
-  audio.forceMono(true); // Force mono if your speaker is mono
    
   // Initialize LittleFS
   if(!LittleFS.begin(true)){
@@ -78,13 +119,13 @@ void audioQuotesInit() {
 
   // Start audio task on Core 0
   xTaskCreatePinnedToCore(
-    audioTask,          // function
-    "audio",            // name
-    8192,               // stack size
-    nullptr,            // param
-    2,                  // priority (higher than idle)
-    &audioTaskHandle,   // handle
-    0                   // Core 0
+    audioTask,
+    "audio",
+    8192,
+    nullptr,
+    2,
+    &audioTaskHandle,
+    0
   );
   
   Serial.println("[AUDIO] Init complete, task spawned on Core 0");

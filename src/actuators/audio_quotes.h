@@ -57,6 +57,19 @@ bool playQuote(const AudioQuote* quote);
 bool playQuoteByCategory(QuoteCategory category);
 
 // ═══════════════════════════════════════════════════════════════
+// TIME-SLICING — For sharing I2S with microphone
+// ═══════════════════════════════════════════════════════════════
+
+// Pause audio playback and release I2S — call BEFORE mic recording
+void audioQuotesPause();
+
+// Resume audio playback — call AFTER mic recording done
+void audioQuotesResume();
+
+// Check if audio is currently paused
+bool audioQuotesIsPaused();
+
+// ═══════════════════════════════════════════════════════════════
 // QUERY FUNCTIONS
 // ═══════════════════════════════════════════════════════════════
 
