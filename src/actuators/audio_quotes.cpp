@@ -1,83 +1,103 @@
 // =============================================================
 // Audio Quotes — Time-sliced I2S sharing with microphone
-// Runs on Core 0 as dedicated task for smooth playback
+// Uses dynamic Audio object - destroyed before mic, recreated after
 // =============================================================
 #include "audio_quotes.h"
 #include "../config.h"
 #include <Audio.h>
 #include <LittleFS.h>
-#include "driver/i2s.h"  // For low-level I2S control
+#include "driver/i2s.h"
 
 // ===== I2S PINS for MAX98357 =====
 #define I2S_BCLK 21
 #define I2S_LRC  0
 #define I2S_DIN  14
 
-Audio audio;
+// Dynamic Audio object - can be destroyed and recreated
+static Audio* pAudio = nullptr;
 
 // Task handle for audio on Core 0
 static TaskHandle_t audioTaskHandle = nullptr;
 static volatile bool audioTaskRunning = false;
-static volatile bool audioPaused = false;  // For time-slicing with mic
+static volatile bool audioPaused = false;
 
 // Queue for file requests
 static volatile bool playRequested = false;
 static char requestedFile[64] = "";
 
-void playFile(const char* filename);
+// Forward declaration
+static void initAudioObject();
 
-// Audio task runs on Core 0 - just calls audio.loop() continuously
+// Audio task runs on Core 0
 void audioTask(void* param) {
   Serial.println("[AUDIO] Task started on Core 0");
   audioTaskRunning = true;
   
   for (;;) {
     // If paused (mic is recording), just wait
-    if (audioPaused) {
+    if (audioPaused || pAudio == nullptr) {
       vTaskDelay(pdMS_TO_TICKS(50));
       continue;
     }
     
     // Check if a new file play was requested
-    if (playRequested) {
+    if (playRequested && pAudio != nullptr) {
       playRequested = false;
       if (strlen(requestedFile) > 0) {
         Serial.print("[AUDIO] Playing: ");
         Serial.println(requestedFile);
-        audio.connecttoFS(LittleFS, requestedFile);
+        pAudio->connecttoFS(LittleFS, requestedFile);
       }
     }
     
-    // This is the critical part - must run frequently
-    audio.loop();
+    // Process audio
+    if (pAudio != nullptr) {
+      pAudio->loop();
+    }
     
-    // Small delay to prevent watchdog issues
     vTaskDelay(1);
   }
+}
+
+// Initialize/reinitialize the Audio object
+static void initAudioObject() {
+  if (pAudio != nullptr) {
+    delete pAudio;
+    pAudio = nullptr;
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+  
+  pAudio = new Audio();
+  pAudio->setPinout(I2S_BCLK, I2S_LRC, I2S_DIN);
+  pAudio->setVolume(40);
+  pAudio->forceMono(true);
+  pAudio->setI2SCommFMT_LSB(false);
+  pAudio->i2s_mclk_pin_select(I2S_PIN_NO_CHANGE);
+  
+  Serial.println("[AUDIO] Audio object initialized");
 }
 
 // Pause audio and FULLY release I2S0 for microphone
 void audioQuotesPause() {
   if (audioPaused) return;
   
-  Serial.println("[AUDIO] Pausing and releasing I2S0...");
-  
-  // Stop playback first
-  audio.stopSong();
-  
-  // Set paused flag so task stops calling audio.loop()
+  Serial.println("[AUDIO] Destroying audio for mic recording...");
   audioPaused = true;
   
-  // Wait for task to stop processing
-  vTaskDelay(pdMS_TO_TICKS(50));
+  // Stop playback
+  if (pAudio != nullptr) {
+    pAudio->stopSong();
+    vTaskDelay(pdMS_TO_TICKS(50));
+    
+    // Delete the Audio object - this should release I2S
+    delete pAudio;
+    pAudio = nullptr;
+  }
   
-  // CRITICAL: Uninstall I2S driver to fully release I2S0
-  // The Audio library uses I2S_NUM_0
+  // Force uninstall I2S driver (in case Audio didn't clean up)
   i2s_driver_uninstall(I2S_NUM_0);
   
-  // Extra delay for I2S peripheral to reset
   vTaskDelay(pdMS_TO_TICKS(100));
-  
   Serial.println("[AUDIO] I2S0 released for mic");
 }
 
@@ -85,18 +105,13 @@ void audioQuotesPause() {
 void audioQuotesResume() {
   if (!audioPaused) return;
   
-  Serial.println("[AUDIO] Re-initializing I2S0 for speaker...");
+  Serial.println("[AUDIO] Recreating audio system...");
   
-  // Re-initialize the Audio library (this reinstalls I2S driver)
-  audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DIN);
-  audio.setVolume(40);
-  audio.forceMono(true);
-  audio.setI2SCommFMT_LSB(false);
+  // Recreate the Audio object fresh
+  initAudioObject();
   
-  // Resume task
   audioPaused = false;
-  
-  Serial.println("[AUDIO] Resumed");
+  Serial.println("[AUDIO] Audio system restored");
 }
 
 // Check if audio is paused
@@ -105,22 +120,14 @@ bool audioQuotesIsPaused() {
 }
 
 void audioQuotesInit() {
-  // I2S setup
-  audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DIN);
-  audio.setVolume(40);
-
-  audio.forceMono(true);
-  audio.setI2SCommFMT_LSB(false);
-  audio.i2s_mclk_pin_select(I2S_PIN_NO_CHANGE);
-   
-  // Initialize LittleFS
+  // Initialize LittleFS first
   if(!LittleFS.begin(true)){
       Serial.println("LittleFS failed");
       return;
   }
   Serial.println("LittleFS initialized successfully");
 
-  // List all files in LittleFS for debugging
+  // List files
   Serial.println("Files in LittleFS:");
   File root = LittleFS.open("/");
   File file = root.openNextFile();
@@ -129,6 +136,9 @@ void audioQuotesInit() {
     Serial.println(file.name());
     file = root.openNextFile();
   }
+
+  // Create initial Audio object
+  initAudioObject();
 
   // Start audio task on Core 0
   xTaskCreatePinnedToCore(
@@ -145,19 +155,16 @@ void audioQuotesInit() {
 }
 
 void audioQuotesLoop() {
-  // No longer needed - task handles it
-  // Keep empty for compatibility
+  // Empty - task handles it
 }
 
 void playFile(const char* filename) {
-  // Check if file exists in LittleFS
   if(!LittleFS.exists(filename)){
-    Serial.print("File not found in LittleFS: ");
+    Serial.print("File not found: ");
     Serial.println(filename);
     return;
   }
 
-  // Request the task to play this file
   strncpy(requestedFile, filename, sizeof(requestedFile) - 1);
   requestedFile[sizeof(requestedFile) - 1] = '\0';
   playRequested = true;
@@ -168,12 +175,8 @@ void playFile(const char* filename) {
 
 // Play audio based on quote text from hashmap
 bool playQuoteByHashmap(const char* quoteText) {
-  if (!quoteText) {
-    Serial.println("playQuoteByHashmap: null text");
-    return false;
-  }
+  if (!quoteText) return false;
   
-  // Look up in hashmap from config.h
   std::string key(quoteText);
   auto it = AUDIO_QUOTE_MAP.find(key);
   if (it == AUDIO_QUOTE_MAP.end()) {
@@ -182,40 +185,29 @@ bool playQuoteByHashmap(const char* quoteText) {
     return false;
   }
   
-  const char* audioPath = it->second.c_str();
-  Serial.print("Hashmap lookup: '");
-  Serial.print(quoteText);
-  Serial.print("' -> ");
-  Serial.println(audioPath);
-  
-  playFile(audioPath);
+  playFile(it->second.c_str());
   return true;
 }
 
-// Play by category - just plays q1.mp3 for now
 bool playQuoteByCategory(QuoteCategory category) {
   playFile("/q1.mp3");
   return true;
 }
 
-// Direct file play
 bool playAudioFile(const char* filepath) {
   playFile(filepath);
   return true;
 }
 
-// Test play on boot
 void audioQuotesTestPlay() {
   Serial.println("TEST: Playing /q1.mp3...");
   playFile("/q1.mp3");
 }
 
-// Check if playing
 bool audioQuotesIsPlaying() {
-  return audio.isRunning();
+  return pAudio != nullptr && pAudio->isRunning();
 }
 
-// Stub functions for compatibility
 bool audioFileExists(const char* filepath) {
   return filepath && LittleFS.exists(filepath);
 }
