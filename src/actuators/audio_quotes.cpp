@@ -1,5 +1,6 @@
 // =============================================================
 // Audio Quotes — EXACT copy of working script + hashmap lookup
+// Runs on Core 0 as dedicated task for smooth playback
 // =============================================================
 #include "audio_quotes.h"
 #include "../config.h"
@@ -13,7 +14,39 @@
 
 Audio audio;
 
+// Task handle for audio on Core 0
+static TaskHandle_t audioTaskHandle = nullptr;
+static volatile bool audioTaskRunning = false;
+
+// Queue for file requests
+static volatile bool playRequested = false;
+static char requestedFile[64] = "";
+
 void playFile(const char* filename);
+
+// Audio task runs on Core 0 - just calls audio.loop() continuously
+void audioTask(void* param) {
+  Serial.println("[AUDIO] Task started on Core 0");
+  audioTaskRunning = true;
+  
+  for (;;) {
+    // Check if a new file play was requested
+    if (playRequested) {
+      playRequested = false;
+      if (strlen(requestedFile) > 0) {
+        Serial.print("[AUDIO] Playing: ");
+        Serial.println(requestedFile);
+        audio.connecttoFS(LittleFS, requestedFile);
+      }
+    }
+    
+    // This is the critical part - must run frequently
+    audio.loop();
+    
+    // Small delay to prevent watchdog issues
+    vTaskDelay(1);
+  }
+}
 
 void audioQuotesInit() {
   // I2S setup
@@ -42,10 +75,24 @@ void audioQuotesInit() {
     Serial.println(file.name());
     file = root.openNextFile();
   }
+
+  // Start audio task on Core 0
+  xTaskCreatePinnedToCore(
+    audioTask,          // function
+    "audio",            // name
+    8192,               // stack size
+    nullptr,            // param
+    2,                  // priority (higher than idle)
+    &audioTaskHandle,   // handle
+    0                   // Core 0
+  );
+  
+  Serial.println("[AUDIO] Init complete, task spawned on Core 0");
 }
 
 void audioQuotesLoop() {
-  audio.loop();
+  // No longer needed - task handles it
+  // Keep empty for compatibility
 }
 
 void playFile(const char* filename) {
@@ -56,9 +103,13 @@ void playFile(const char* filename) {
     return;
   }
 
-  Serial.print("Playing: ");
+  // Request the task to play this file
+  strncpy(requestedFile, filename, sizeof(requestedFile) - 1);
+  requestedFile[sizeof(requestedFile) - 1] = '\0';
+  playRequested = true;
+  
+  Serial.print("[AUDIO] Queued: ");
   Serial.println(filename);
-  audio.connecttoFS(LittleFS, filename);
 }
 
 // Play audio based on quote text from hashmap

@@ -93,16 +93,18 @@ void setup() {
     delay(1000);
 
     // ══════════════════════════════════════════════════════
-    // AUDIO FIRST — before anything else touches I2S/SPI
+    // AUDIO FIRST — spawns task on Core 0 for smooth playback
     // ══════════════════════════════════════════════════════
     audioQuotesInit();
+    
+    // Give the audio task time to start
+    delay(100);
+    
+    // Test play
     audioQuotesTestPlay();
     
-    // Let audio play for a bit before other init
-    for (int i = 0; i < 500; i++) {
-        audioQuotesLoop();
-        delay(10);
-    }
+    // Let it play for a bit
+    delay(3000);
 
     logInit(LOG_LEVEL_DEBUG);
 
@@ -354,10 +356,8 @@ void loop() {
     }
 
     // ── MQTT runs on its own Core 0 task — no mqttLoop() call here ──
+    // ── Audio runs on its own Core 0 task — no audioQuotesLoop() call needed ──
 
-    // ── Audio Quotes Loop — process MP3 playback ─────────
-    audioQuotesLoop();
-    
     //dashState.breathingActive = ledBreathingUpdate();
     // =========================================================
     // A. SENSOR READS — every loop iteration, no gating
