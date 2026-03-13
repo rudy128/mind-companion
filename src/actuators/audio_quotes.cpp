@@ -89,12 +89,13 @@ void audioQuotesPause() {
     pAudio->stopSong();
     vTaskDelay(pdMS_TO_TICKS(50));
     
-    // Delete the Audio object - this should release I2S
+    // Delete the Audio object - this releases I2S
     delete pAudio;
     pAudio = nullptr;
   }
   
-  // Force uninstall I2S driver (in case Audio didn't clean up)
+  // Belt-and-suspenders: force uninstall in case Audio didn't clean up
+  // (ignore error if already uninstalled)
   i2s_driver_uninstall(I2S_NUM_0);
   
   vTaskDelay(pdMS_TO_TICKS(100));

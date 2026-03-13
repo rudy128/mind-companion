@@ -1,10 +1,8 @@
 // =============================================================
 // Microphone — INMP441 I2S Implementation
 // =============================================================
-// On ESP32-S3 the camera driver (LCD_CAM peripheral) and other
-// peripherals can interfere with the I2S0 driver state.  To be
-// safe we freshly install/uninstall the I2S driver around every
-// recording session rather than leaving it resident.
+// Uses exact same I2S config as the working standalone script.
+// Time-sliced with speaker on I2S_NUM_0.
 // =============================================================
 #include "microphone.h"
 #include "../config.h"
@@ -17,12 +15,13 @@ static bool _driverInstalled = false;
 static bool _installDriver() {
     if (_driverInstalled) return true;
 
+    // EXACT config from working script - DO NOT CHANGE
     i2s_config_t i2s_config = {
         .mode                 = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
         .sample_rate          = MIC_SAMPLE_RATE,
         .bits_per_sample      = I2S_BITS_PER_SAMPLE_16BIT,
         .channel_format       = I2S_CHANNEL_FMT_ONLY_LEFT,
-        .communication_format = I2S_COMM_FORMAT_STAND_I2S,
+        .communication_format = I2S_COMM_FORMAT_I2S_MSB,  // ← KEY CHANGE from working script
         .intr_alloc_flags     = 0,
         .dma_buf_count        = 8,
         .dma_buf_len          = 1024,
@@ -82,45 +81,47 @@ void micInit() {
 
 size_t micRecord(int16_t* buffer, size_t bufferSize) {
     // ── Install driver fresh for this recording session ──
-    // This avoids any conflict with the camera or Audio lib that may
-    // have touched I2S0 between recordings.
-    _uninstallDriver();   // ensure clean slate even if leftover
+    _uninstallDriver();   // ensure clean slate
     if (!_installDriver()) {
         LOG_ERROR("MIC", "Cannot install I2S driver — recording aborted");
         return 0;
     }
 
-    // Flush any stale DMA data so we get a clean recording
-    i2s_zero_dma_buffer(MIC_I2S_PORT);
-    vTaskDelay(pdMS_TO_TICKS(50));   // let DMA settle
-
-    size_t totalRead = 0;
-    const uint8_t MAX_RETRIES = 40;   // 40 × 100 ms = 4 s max
-    uint8_t retries = 0;
-
-    while (totalRead < bufferSize && retries < MAX_RETRIES) {
-        size_t bytesRead = 0;
-        esp_err_t err = i2s_read(MIC_I2S_PORT,
-                                 (uint8_t*)buffer + totalRead,
-                                 bufferSize - totalRead,
-                                 &bytesRead,
-                                 pdMS_TO_TICKS(100));
-        if (err != ESP_OK) {
-            LOG_ERROR("MIC", "i2s_read error: 0x%x (%s)", err, esp_err_to_name(err));
-            break;
-        }
-        if (bytesRead > 0) {
-            totalRead += bytesRead;
-        } else {
-            retries++;
-        }
-        vTaskDelay(1);   // feed task watchdog
+    // ── Record using SAME method as working script ──
+    // Single blocking i2s_read call with portMAX_DELAY (like working script)
+    size_t bytesRead = 0;
+    esp_err_t err = i2s_read(MIC_I2S_PORT, buffer, bufferSize, &bytesRead, portMAX_DELAY);
+    
+    if (err != ESP_OK) {
+        LOG_ERROR("MIC", "i2s_read error: 0x%x (%s)", err, esp_err_to_name(err));
+        _uninstallDriver();
+        return 0;
     }
 
-    // ── Release the I2S driver so nothing else conflicts ──
+    // ── Analyze audio levels for debugging ──
+    if (bytesRead > 0) {
+        int16_t minVal = 32767, maxVal = -32768;
+        int64_t sum = 0;
+        size_t samples = bytesRead / sizeof(int16_t);
+        for (size_t i = 0; i < samples; i++) {
+            int16_t s = buffer[i];
+            if (s < minVal) minVal = s;
+            if (s > maxVal) maxVal = s;
+            sum += abs(s);
+        }
+        int32_t avgLevel = (int32_t)(sum / samples);
+        LOG_INFO("MIC", "Audio: min=%d max=%d avg=%d peak-to-peak=%d", 
+                 minVal, maxVal, avgLevel, maxVal - minVal);
+        
+        if ((maxVal - minVal) < 500) {
+            LOG_WARN("MIC", "Audio appears SILENT - check mic wiring!");
+        }
+    }
+
+    // ── Release the I2S driver ──
     _uninstallDriver();
 
-    return totalRead;
+    return bytesRead;
 }
 
 void micCreateWavHeader(uint8_t* wav, size_t pcmSize, uint32_t sampleRate) {
