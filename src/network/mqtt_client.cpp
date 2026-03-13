@@ -356,6 +356,16 @@ void mqttPublishAudio(int16_t* pcmData, size_t pcmBytes) {
     free(b64);
 }
 
+void mqttPublishAIResponse(const char* rawResponse) {
+    if (!_mqtt.connected()) {
+        LOG_ERROR("MQTT", "Not connected, can't publish AI response");
+        return;
+    }
+    
+    LOG_INFO("MQTT", "Publishing AI response: %s", rawResponse);
+    _mqtt.publish("mind/ai_response", rawResponse);
+}
+
 void mqttSetCommandCallback(MqttCmdCallback cb) {
     _cmdCallback = cb;
 }

@@ -6,14 +6,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Mic, Play, Pause, Trash2, Download } from "lucide-react";
+import { Mic, Play, Pause, Trash2, Download, Bot } from "lucide-react";
 
 interface AudioDebugProps {
   audioBase64: string | null;
+  aiResponse: string | null;
   onClear: () => void;
 }
 
-export function AudioDebug({ audioBase64, onClear }: AudioDebugProps) {
+export function AudioDebug({ audioBase64, aiResponse, onClear }: AudioDebugProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -136,6 +137,19 @@ export function AudioDebug({ audioBase64, onClear }: AudioDebugProps) {
             <Mic className="h-8 w-8 mx-auto mb-2 opacity-50" />
             <p>No audio recorded yet</p>
             <p className="text-xs mt-1">Double-press the button on ESP32 to record</p>
+          </div>
+        )}
+
+        {/* AI Response Section */}
+        {aiResponse && (
+          <div className="mt-4 pt-4 border-t">
+            <div className="flex items-center gap-2 mb-2">
+              <Bot className="h-4 w-4" />
+              <span className="font-medium text-sm">OpenAI Response (Raw)</span>
+            </div>
+            <pre className="bg-muted p-3 rounded text-xs overflow-auto max-h-48 whitespace-pre-wrap break-all">
+              {aiResponse}
+            </pre>
           </div>
         )}
       </CardContent>

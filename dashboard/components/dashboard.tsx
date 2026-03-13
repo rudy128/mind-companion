@@ -20,7 +20,7 @@ import { Activity, Loader2, WifiOff } from "lucide-react";
 const DEFAULT_ESP_IP = "172.20.10.8";
 
 export function Dashboard() {
-  const { data, logs, connection, audioBase64, sendCommand, clearLogs, clearAudio } = useMqtt();
+  const { data, logs, connection, audioBase64, aiResponse, sendCommand, clearLogs, clearAudio } = useMqtt();
   const [espIp, setEspIp] = useState(DEFAULT_ESP_IP);
 
   useEffect(() => {
@@ -123,7 +123,7 @@ export function Dashboard() {
               uptime={data.uptime}
               voiceCommand={data.voice}
             />
-            <AudioDebug audioBase64={audioBase64} onClear={clearAudio} />
+            <AudioDebug audioBase64={audioBase64} aiResponse={aiResponse} onClear={clearAudio} />
           </div>
         )}
 

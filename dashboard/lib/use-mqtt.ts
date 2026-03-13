@@ -37,6 +37,8 @@ export interface MqttState {
   connection: ConnectionState;
   /** Latest recorded audio as base64 WAV */
   audioBase64: string | null;
+  /** Latest raw AI response for debugging */
+  aiResponse: string | null;
   /** Send a command to the MCU */
   sendCommand: (cmd: Command["cmd"]) => void;
   /** Clear the local log buffer */
@@ -51,6 +53,7 @@ export function useMqtt(): MqttState {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [connection, setConnection] = useState<ConnectionState>("disconnected");
   const [audioBase64, setAudioBase64] = useState<string | null>(null);
+  const [aiResponse, setAiResponse] = useState<string | null>(null);
 
   // ── Connect on mount, disconnect on unmount ────────────
   useEffect(() => {
@@ -70,11 +73,11 @@ export function useMqtt(): MqttState {
       setConnection("connected");
       // Subscribe to all mind/* topics
       client.subscribe(
-        [TOPICS.DATA, TOPICS.LOGS, TOPICS.ALERT, TOPICS.AUDIO],
+        [TOPICS.DATA, TOPICS.LOGS, TOPICS.ALERT, TOPICS.AUDIO, TOPICS.AI_RESPONSE],
         { qos: 0 },
         (err) => {
           if (err) console.error("[MQTT] Subscribe error:", err);
-          else console.log("[MQTT] Subscribed to:", TOPICS.DATA, TOPICS.LOGS, TOPICS.ALERT, TOPICS.AUDIO);
+          else console.log("[MQTT] Subscribed to:", TOPICS.DATA, TOPICS.LOGS, TOPICS.ALERT, TOPICS.AUDIO, TOPICS.AI_RESPONSE);
         },
       );
     });
@@ -116,6 +119,12 @@ export function useMqtt(): MqttState {
           setAudioBase64(raw);
           return;
         }
+        // Check if it's the AI response topic (raw text, not JSON)
+        if (topic === TOPICS.AI_RESPONSE) {
+          console.log("[MQTT] Received AI response:", raw);
+          setAiResponse(raw);
+          return;
+        }
         console.error("[MQTT] JSON parse error:", e, "raw:", raw.substring(0, 100));
       }
     });
@@ -144,5 +153,5 @@ export function useMqtt(): MqttState {
     setAudioBase64(null);
   }, []);
 
-  return { data, logs, connection, audioBase64, sendCommand, clearLogs, clearAudio };
+  return { data, logs, connection, audioBase64, aiResponse, sendCommand, clearLogs, clearAudio };
 }

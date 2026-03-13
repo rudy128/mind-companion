@@ -4,6 +4,7 @@
 #include "openai_api.h"
 #include "../config.h"
 #include "../network/wifi_manager.h"
+#include "../network/mqtt_client.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
@@ -122,6 +123,9 @@ String openaiTranscribe(int16_t* pcmData, size_t pcmBytes) {
 
     // Debug: print JSON body
     Serial.println("[AI] JSON body: " + jsonBody.substring(0, 300));
+    
+    // Publish raw response to MQTT for dashboard debugging
+    mqttPublishAIResponse(jsonBody.c_str());
 
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, jsonBody);
