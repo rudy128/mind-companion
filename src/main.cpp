@@ -51,8 +51,10 @@
 static MqttDashState dashState;
 
 // ─── Speech task — runs on Core 0 ──────────────────────────
-// Audio buffer lives in DRAM (not stack) — 64 KB
-static int16_t audioBuffer[MIC_SAMPLE_RATE * MIC_RECORD_SECONDS];
+// Audio buffer allocated in PSRAM to avoid fragmenting DRAM
+// (SSL handshake needs ~40KB contiguous DRAM)
+static int16_t* audioBuffer = nullptr;
+static const size_t AUDIO_BUFFER_SIZE = MIC_SAMPLE_RATE * MIC_RECORD_SECONDS * sizeof(int16_t);
 static TaskHandle_t speechTaskHandle = nullptr;
 static volatile bool speechBusy      = false;   // set while OpenAI call is in flight
 static volatile bool speechTrigger   = false;   // set by double-press, cleared by task
@@ -94,6 +96,19 @@ static void onMqttCommand(const String& cmd);
 void setup() {
     Serial.begin(115200);
     delay(1000);
+
+    // ══════════════════════════════════════════════════════
+    // ALLOCATE AUDIO BUFFER IN PSRAM (keeps DRAM free for SSL)
+    // ══════════════════════════════════════════════════════
+    audioBuffer = (int16_t*)ps_malloc(AUDIO_BUFFER_SIZE);
+    if (!audioBuffer) {
+        Serial.println("[FATAL] Failed to allocate audio buffer in PSRAM!");
+        // Fallback to regular malloc if PSRAM fails
+        audioBuffer = (int16_t*)malloc(AUDIO_BUFFER_SIZE);
+    }
+    Serial.printf("[MEM] Audio buffer: %u bytes in %s\n", 
+                  AUDIO_BUFFER_SIZE, 
+                  esp_ptr_external_ram(audioBuffer) ? "PSRAM" : "DRAM");
 
     // ══════════════════════════════════════════════════════
     // AUDIO FIRST — spawns task on Core 0 for smooth playback
@@ -261,10 +276,10 @@ static void speechTask(void* param) {
         vTaskDelay(pdMS_TO_TICKS(200));  // Let I2S fully release
 
         LOG_INFO("SPEECH", "Recording %d s (buf=%u bytes)...", 
-                 MIC_RECORD_SECONDS, sizeof(audioBuffer));
+                 MIC_RECORD_SECONDS, AUDIO_BUFFER_SIZE);
 
         tftShowListening(true);
-        size_t bytesRead = micRecord(audioBuffer, sizeof(audioBuffer));
+        size_t bytesRead = micRecord(audioBuffer, AUDIO_BUFFER_SIZE);
         tftShowListening(false);
 
         // ══════════════════════════════════════════════════════
