@@ -154,8 +154,10 @@ void setup() {
     vibrationInit();
 
     // ── Microphone ───────────────────────────────────────
-    // Time-sliced with speaker — audio pauses during recording
-    micInit();
+    // DON'T init mic here — it conflicts with Audio library on I2S0
+    // Mic driver is installed on-demand during recording (time-sliced)
+    // micInit();  // REMOVED - causes I2S conflict at startup
+    LOG_INFO("MIC", "Microphone ready (on-demand I2S, time-sliced with speaker)");
 
     // ── Sleep Detector ───────────────────────────────────
     sleepDetectorInit();

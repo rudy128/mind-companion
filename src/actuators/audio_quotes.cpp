@@ -6,6 +6,7 @@
 #include "../config.h"
 #include <Audio.h>
 #include <LittleFS.h>
+#include "driver/i2s.h"  // For low-level I2S control
 
 // ===== I2S PINS for MAX98357 =====
 #define I2S_BCLK 21
@@ -33,7 +34,7 @@ void audioTask(void* param) {
   for (;;) {
     // If paused (mic is recording), just wait
     if (audioPaused) {
-      vTaskDelay(pdMS_TO_TICKS(10));
+      vTaskDelay(pdMS_TO_TICKS(50));
       continue;
     }
     
@@ -55,34 +56,46 @@ void audioTask(void* param) {
   }
 }
 
-// Pause audio - MUST call before mic recording
+// Pause audio and FULLY release I2S0 for microphone
 void audioQuotesPause() {
   if (audioPaused) return;
   
-  Serial.println("[AUDIO] Pausing for mic recording...");
-  audioPaused = true;
+  Serial.println("[AUDIO] Pausing and releasing I2S0...");
   
-  // Stop any current playback
+  // Stop playback first
   audio.stopSong();
   
-  // Give time for I2S to release
+  // Set paused flag so task stops calling audio.loop()
+  audioPaused = true;
+  
+  // Wait for task to stop processing
+  vTaskDelay(pdMS_TO_TICKS(50));
+  
+  // CRITICAL: Uninstall I2S driver to fully release I2S0
+  // The Audio library uses I2S_NUM_0
+  i2s_driver_uninstall(I2S_NUM_0);
+  
+  // Extra delay for I2S peripheral to reset
   vTaskDelay(pdMS_TO_TICKS(100));
   
-  Serial.println("[AUDIO] Paused - I2S0 released");
+  Serial.println("[AUDIO] I2S0 released for mic");
 }
 
-// Resume audio - call after mic recording done
+// Resume audio after mic recording
 void audioQuotesResume() {
   if (!audioPaused) return;
   
-  Serial.println("[AUDIO] Resuming audio system...");
+  Serial.println("[AUDIO] Re-initializing I2S0 for speaker...");
   
-  // Re-initialize I2S for speaker
+  // Re-initialize the Audio library (this reinstalls I2S driver)
   audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DIN);
   audio.setVolume(40);
   audio.forceMono(true);
+  audio.setI2SCommFMT_LSB(false);
   
+  // Resume task
   audioPaused = false;
+  
   Serial.println("[AUDIO] Resumed");
 }
 
