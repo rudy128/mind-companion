@@ -52,9 +52,9 @@
 
 // ========================= Emergency Button =========================
 #define BUTTON_PIN              41       // active LOW with internal pull-up
-#define DOUBLE_PRESS_WINDOW_MS  400      // max time between presses for double-press
+#define DOUBLE_PRESS_WINDOW_MS  1000     // 1 second window for double-press (human responsive)
 #define LONG_PRESS_MS           1500     // hold time for long press (future use)
-#define DEBOUNCE_MS             50       // button debounce time
+#define DEBOUNCE_MS             80       // button debounce time
 
 // ========================= LED Strip (Breathing Pattern) =========================
 #define LED_PIN            20       // PWM output via PNP transistor

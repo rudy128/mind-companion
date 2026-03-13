@@ -402,58 +402,62 @@ void loop() {
     }
 
     // =========================================================
-    // BUTTON HANDLING — Single press = emergency, Double = voice
-    // Time-sliced I2S: audio pauses during recording
+    // BUTTON HANDLING — Double press = voice (priority), Single = emergency
+    // Logic: Count presses within 1s window. If 2+ presses detected,
+    // trigger voice immediately. If only 1 press after timeout, emergency.
     // =========================================================
     bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
     
-    // Detect rising edge (button just pressed)
+    // Detect falling edge (button just pressed, active LOW)
     if (buttonPressed && !buttonWasPressed) {
         // Debounce check
         if (now - lastPressTime > DEBOUNCE_MS) {
             pressCount++;
             lastPressTime = now;
+            
+            // ══════════════════════════════════════════════════
+            // INSTANT DOUBLE-PRESS DETECTION (priority)
+            // If this is the 2nd press, trigger voice immediately
+            // ══════════════════════════════════════════════════
+            if (pressCount >= 2) {
+                if (!speechBusy) {
+                    LOG_INFO("BUTTON", "DOUBLE PRESS — triggering voice recording");
+                    speechTrigger = true;
+                    vibrationPulse(100);  // Short feedback buzz
+                } else {
+                    LOG_WARN("BUTTON", "Speech already in progress");
+                }
+                pressCount = 0;  // Reset immediately after handling
+            }
         }
     }
     buttonWasPressed = buttonPressed;
     
-    // After DOUBLE_PRESS_WINDOW expires, evaluate what we got
-    if (pressCount > 0 && (now - lastPressTime > DOUBLE_PRESS_WINDOW_MS)) {
-        if (pressCount >= 2) {
-            // ══════════════════════════════════════════════════
-            // DOUBLE PRESS → Trigger voice recording
-            // ══════════════════════════════════════════════════
-            if (!speechBusy) {
-                LOG_INFO("BUTTON", "DOUBLE PRESS — triggering voice recording");
-                speechTrigger = true;
-                vibrationPulse(100);  // Short feedback buzz
-            } else {
-                LOG_WARN("BUTTON", "Speech already in progress");
-            }
+    // After timeout, if only 1 press was registered → emergency toggle
+    if (pressCount == 1 && (now - lastPressTime > DOUBLE_PRESS_WINDOW_MS)) {
+        // ══════════════════════════════════════════════════
+        // SINGLE PRESS (after timeout) → Toggle emergency
+        // ══════════════════════════════════════════════════
+        xSemaphoreTake(actuatorMutex, portMAX_DELAY);
+        emergencyFlag = !emergencyFlag;
+        
+        if (emergencyFlag) {
+            LOG_ERROR("MAIN", "EMERGENCY ACTIVATED (single press)");
+            tftUpdateEmergency(true);
+            xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
+            dashState.emergencyActive = true;
+            xSemaphoreGive(mqttDashMutex);
+            mqttPublishAlert(true);
         } else {
-            // ══════════════════════════════════════════════════
-            // SINGLE PRESS → Toggle emergency
-            // ══════════════════════════════════════════════════
-            xSemaphoreTake(actuatorMutex, portMAX_DELAY);
-            emergencyFlag = !emergencyFlag;
-            
-            if (emergencyFlag) {
-                LOG_ERROR("MAIN", "EMERGENCY ACTIVATED");
-                tftUpdateEmergency(true);
-                xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
-                dashState.emergencyActive = true;
-                xSemaphoreGive(mqttDashMutex);
-                mqttPublishAlert(true);
-            } else {
-                LOG_INFO("MAIN", "EMERGENCY CLEARED");
-                tftUpdateEmergency(false);
-                xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
-                dashState.emergencyActive = false;
-                xSemaphoreGive(mqttDashMutex);
-                mqttPublishAlert(false);
-            }
-            xSemaphoreGive(actuatorMutex);
+            LOG_INFO("MAIN", "EMERGENCY CLEARED (single press)");
+            tftUpdateEmergency(false);
+            xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
+            dashState.emergencyActive = false;
+            xSemaphoreGive(mqttDashMutex);
+            mqttPublishAlert(false);
         }
+        xSemaphoreGive(actuatorMutex);
+        
         pressCount = 0;  // Reset for next detection
     }
 
