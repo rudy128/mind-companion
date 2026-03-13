@@ -64,16 +64,18 @@
 // ========================= Vibration Motor =========================
 #define VIBRATION_PIN      46
 
-// ========================= Microphone (INMP441 via I2S #0 RX) =========================
-#define MIC_I2S_PORT       I2S_NUM_0
+// ========================= Microphone (INMP441 via I2S #1 RX) =========================
+// NOTE: Audio library uses I2S_NUM_0, so mic MUST use I2S_NUM_1
+#define MIC_I2S_PORT       I2S_NUM_1
 #define MIC_I2S_SCK        45
 #define MIC_I2S_WS         38
 #define MIC_I2S_SD         19
 #define MIC_SAMPLE_RATE    16000
-#define MIC_RECORD_SECONDS 2
+#define MIC_RECORD_SECONDS 3
 
-// ========================= Speaker (MAX98357A via I2S #1 TX) =========================
-#define SPK_I2S_PORT       I2S_NUM_1
+// ========================= Speaker (MAX98357A via I2S #0 TX) =========================
+// NOTE: ESP32-audioI2S library hardcodes I2S_NUM_0
+#define SPK_I2S_PORT       I2S_NUM_0
 #define SPK_I2S_BCLK       21
 #define SPK_I2S_LRC        0
 #define SPK_I2S_DIN        14
