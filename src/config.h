@@ -51,7 +51,10 @@
 #define GSR_SAMPLES        10       // number of ADC samples to average
 
 // ========================= Emergency Button =========================
-#define BUTTON_PIN         41       // active LOW with internal pull-up
+#define BUTTON_PIN              41       // active LOW with internal pull-up
+#define DOUBLE_PRESS_WINDOW_MS  400      // max time between presses for double-press
+#define LONG_PRESS_MS           1500     // hold time for long press (future use)
+#define DEBOUNCE_MS             50       // button debounce time
 
 // ========================= LED Strip (Breathing Pattern) =========================
 #define LED_PIN            20       // PWM output via PNP transistor

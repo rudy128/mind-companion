@@ -55,15 +55,18 @@ static MqttDashState dashState;
 static int16_t audioBuffer[MIC_SAMPLE_RATE * MIC_RECORD_SECONDS];
 static TaskHandle_t speechTaskHandle = nullptr;
 static volatile bool speechBusy      = false;   // set while OpenAI call is in flight
+static volatile bool speechTrigger   = false;   // set by double-press, cleared by task
 
 // ─── Timing trackers ───────────────────────────────────────
 static unsigned long lastDisplayTick   = 0;   // 1-second unified TFT + dashState tick
-static unsigned long lastSRTime        = 0;   // speech recognition (Core 0 task)
-static unsigned long lastVibrationTime = 0;
 static unsigned long lastMovementTime  = 0;
 static unsigned long awakeStartTime    = 0;   // when "Awake" state began
-static unsigned long lastAwakeNudge    = 0;   // last awake-nudge vibration
 static bool          awakeNudgeFired   = false; // true after the 1-min nudge has fired
+
+// ─── Button state for single/double press detection ───────
+static unsigned long lastPressTime    = 0;
+static uint8_t       pressCount       = 0;
+static bool          buttonWasPressed = false;
 
 // ─── Emergency state ───────────────────────────────────────
 static bool emergencyFlag = false;
@@ -151,7 +154,7 @@ void setup() {
     vibrationInit();
 
     // ── Microphone ───────────────────────────────────────
-    // micInit();   // DISABLED — testing sensors + MQTT first
+    micInit();   // Initialize I2S for recording (driver installed on-demand)
 
     // ── Sleep Detector ───────────────────────────────────
     sleepDetectorInit();
@@ -196,16 +199,10 @@ void setup() {
     // ── Init timing ──────────────────────────────────────
     unsigned long now  = millis();
     lastDisplayTick    = now;
-    lastVibrationTime  = now;
     lastMovementTime   = now;
-    awakeStartTime     = now;
-    lastAwakeNudge     = now;
+    awakeStartTime     = 0;  // Not awake until detected
 
-    // ── Speech task on Core 0 ────────────────────────────
-    // DISABLED — testing sensors + MQTT stability first.
-    // The OpenAI TLS calls on Core 0 starve the WiFi task and cause
-    // MQTT keepalive timeouts. Re-enable once MQTT is confirmed stable.
-    /*
+    // ── Speech task on Core 0 — waits for double-press trigger ──
     xTaskCreatePinnedToCore(
         speechTask,         // function
         "speech",           // name
@@ -215,118 +212,107 @@ void setup() {
         &speechTaskHandle,  // handle
         0                   // ← Core 0
     );
-    */
 
     // ── Ready ────────────────────────────────────────────
     LOG_INFO("MAIN", "All systems go — sensor loop on Core 1");
 }
 
 // ============================================================
-//  SPEECH TASK  (Core 0 — never touches sensors or TFT)
+//  SPEECH TASK  (Core 0 — event-driven, waits for trigger)
+//  Triggered by double-press on button. Records, transcribes,
+//  then goes back to sleep. Never touches sensors or TFT.
 // ============================================================
 static void speechTask(void* param) {
+    LOG_INFO("SPEECH", "Task started on Core 0 — waiting for trigger");
+    
     for (;;) {
-        // Wait until it's time for the next recognition cycle
-        // vTaskDelay is preferred over delay() inside a task
-        vTaskDelay(pdMS_TO_TICKS(INTERVAL_SPEECH_RECOG));
+        // Sleep until triggered by double-press (check every 100ms)
+        while (!speechTrigger) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        
+        // Clear trigger immediately
+        speechTrigger = false;
+        speechBusy = true;
+        
+        LOG_INFO("SPEECH", "--- RECORDING TRIGGERED ---");
 
-        if (!wifiIsConnected()) continue;
-
-        // Verify the TCP/IP stack is actually healthy (DNS probe).
-        // After an SSL abort WiFi stays "connected" but DNS dies.
-        if (!wifiEnsureConnected()) {
-            LOG_WARN("SPEECH", "WiFi stack dead — skipping cycle");
+        if (!wifiIsConnected()) {
+            LOG_WARN("SPEECH", "WiFi not connected — aborting");
+            speechBusy = false;
             continue;
         }
 
-        speechBusy = true;
-        LOG_INFO("SPEECH", "--- CYCLE START --- WiFi=%s heap=%lu",
-                 wifiIsConnected() ? "OK" : "DOWN", esp_get_free_heap_size());
-        LOG_INFO("SPEECH", "Recording %d s (buf=%u bytes)...", MIC_RECORD_SECONDS, sizeof(audioBuffer));
+        // Verify the TCP/IP stack is actually healthy (DNS probe)
+        if (!wifiEnsureConnected()) {
+            LOG_WARN("SPEECH", "WiFi stack dead — aborting");
+            speechBusy = false;
+            continue;
+        }
+
+        LOG_INFO("SPEECH", "Recording %d s (buf=%u bytes)...", 
+                 MIC_RECORD_SECONDS, sizeof(audioBuffer));
 
         tftShowListening(true);
         size_t bytesRead = micRecord(audioBuffer, sizeof(audioBuffer));
         tftShowListening(false);
 
-        LOG_INFO("SPEECH", "micRecord returned %u bytes (expected %u)",
-                 bytesRead, sizeof(audioBuffer));
+        LOG_INFO("SPEECH", "micRecord returned %u bytes", bytesRead);
 
         if (bytesRead > 0) {
-            // Stream PCM directly to OpenAI — no malloc copy needed.
-            // The WAV header is built inside openaiTranscribe() on the stack.
-            size_t pcmSize = bytesRead;
-            LOG_INFO("SPEECH", "Sending %u PCM bytes to OpenAI Whisper...", pcmSize);
-            String transcript = openaiTranscribe(audioBuffer, pcmSize);
-            LOG_INFO("SPEECH", "OpenAI returned: \"%s\" (len=%u)",
-                     transcript.c_str(), transcript.length());
+            LOG_INFO("SPEECH", "Sending to OpenAI Whisper...");
+            String transcript = openaiTranscribe(audioBuffer, bytesRead);
+            LOG_INFO("SPEECH", "Transcript: \"%s\"", transcript.c_str());
 
-            // Signal WiFi manager whether this cycle succeeded or failed.
-            // It takes multiple consecutive failures before a force-reconnect
-            // is attempted — a single SSL timeout is normal and shouldn't
-            // tear down WiFi for the web server and camera.
             if (transcript.length() == 0) {
                 wifiSetLastCycleFailed(true);
-                LOG_WARN("SPEECH", "Transcription failed — will retry next cycle");
+                LOG_WARN("SPEECH", "Empty transcript — failed");
             } else {
                 wifiSetLastCycleFailed(false);
-            }
-
-            if (transcript.length() > 0) {
                 tftUpdateSpeechStatus(transcript);
+                
                 xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
-                strlcpy(dashState.lastVoiceCommand, transcript.c_str(), sizeof(dashState.lastVoiceCommand));
+                strlcpy(dashState.lastVoiceCommand, transcript.c_str(), 
+                        sizeof(dashState.lastVoiceCommand));
                 xSemaphoreGive(mqttDashMutex);
 
-                LOG_INFO("SPEECH", "Parsing command from transcript...");
+                // Parse and execute command
                 VoiceCommand cmd = commandParse(transcript);
-                LOG_INFO("SPEECH", "Command parsed: %s (%d)", commandToString(cmd).c_str(), (int)cmd);
+                LOG_INFO("SPEECH", "Command: %s", commandToString(cmd).c_str());
 
+                xSemaphoreTake(actuatorMutex, portMAX_DELAY);
                 switch (cmd) {
                     case CMD_BREATHING_PATTERN:
-                        LOG_INFO("SPEECH", "→ CMD_BREATHING_PATTERN: calling ledBreathingStart(5)");
-                        //ledBreathingStart(5);   from old pattern
-                        LOG_INFO("SPEECH", "→ ledBreathingStart done, isActive=%s",
-                                 ledBreathingIsActive() ? "true" : "false");
+                        ledBreathingStart();
                         break;
                     case CMD_HELP_ME:
                     case CMD_EMERGENCY:
-                        LOG_WARN("SPEECH", "→ CMD_EMERGENCY: activating emergency");
-                        xSemaphoreTake(actuatorMutex, portMAX_DELAY);
                         emergencyFlag = true;
-                        xSemaphoreGive(actuatorMutex);
                         tftUpdateEmergency(true);
                         xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
                         dashState.emergencyActive = true;
                         xSemaphoreGive(mqttDashMutex);
-                        LOG_WARN("SPEECH", "→ Emergency active");
-                        break;
-                    case CMD_HOW_AM_I:
-                        LOG_INFO("SPEECH", "→ CMD_HOW_AM_I: status check");
-                        // Could play a status audio file here
+                        mqttPublishAlert(true);
                         break;
                     case CMD_STOP:
-                        LOG_INFO("SPEECH", "→ CMD_STOP: stopping LED + emergency");
-                        xSemaphoreTake(actuatorMutex, portMAX_DELAY);
                         ledBreathingStop();
                         emergencyFlag = false;
-                        xSemaphoreGive(actuatorMutex);
                         tftUpdateEmergency(false);
                         xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
                         dashState.emergencyActive = false;
                         xSemaphoreGive(mqttDashMutex);
+                        mqttPublishAlert(false);
                         break;
                     default:
-                        LOG_DEBUG("SPEECH", "→ CMD_NONE — no keyword matched");
                         break;
                 }
-            } else {
-                LOG_WARN("SPEECH", "OpenAI returned empty transcript — nothing to parse");
+                xSemaphoreGive(actuatorMutex);
             }
         } else {
-            LOG_WARN("SPEECH", "micRecord returned 0 bytes — skipping OpenAI call");
+            LOG_WARN("SPEECH", "No audio recorded");
         }
 
-        LOG_INFO("SPEECH", "--- CYCLE END --- heap=%lu", esp_get_free_heap_size());
+        LOG_INFO("SPEECH", "--- DONE --- heap=%lu", esp_get_free_heap_size());
         speechBusy = false;
     }
 }
@@ -402,39 +388,61 @@ void loop() {
         }
     }
 
-    // ── Emergency Button — triggered ONLY by child pressing button ──
-    // Latches on press. Does NOT auto-clear on release — stays active
-    // until voice command "stop" or web dashboard clears it.
-    static bool prevButtonState = false;
+    // =========================================================
+    // BUTTON HANDLING — Single press = emergency, Double = voice
+    // Non-blocking state machine with debounce
+    // =========================================================
     bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
     
-
-if (buttonPressed && !prevButtonState) {   // just pressed
-
-    xSemaphoreTake(actuatorMutex, portMAX_DELAY);
-    emergencyFlag = !emergencyFlag;  // TOGGLE state
-
-    if (emergencyFlag) {
-        LOG_ERROR("MAIN", "EMERGENCY ACTIVATED");
-        // Could play an alarm MP3: playAudioFile("/alarm.mp3");
-        tftUpdateEmergency(true);
-        xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
-        dashState.emergencyActive = true;
-        xSemaphoreGive(mqttDashMutex);
-        mqttPublishAlert(true);
-    } 
-    else {
-        LOG_ERROR("MAIN", "EMERGENCY CLEARED");
-        tftUpdateEmergency(false);
-        xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
-        dashState.emergencyActive = false;
-        xSemaphoreGive(mqttDashMutex);
-        mqttPublishAlert(false);
+    // Detect rising edge (button just pressed)
+    if (buttonPressed && !buttonWasPressed) {
+        // Debounce check
+        if (now - lastPressTime > DEBOUNCE_MS) {
+            pressCount++;
+            lastPressTime = now;
+        }
     }
-    xSemaphoreGive(actuatorMutex);
-}
-
-prevButtonState = buttonPressed;
+    buttonWasPressed = buttonPressed;
+    
+    // After DOUBLE_PRESS_WINDOW expires, evaluate what we got
+    if (pressCount > 0 && (now - lastPressTime > DOUBLE_PRESS_WINDOW_MS)) {
+        if (pressCount >= 2) {
+            // ══════════════════════════════════════════════════
+            // DOUBLE PRESS → Trigger voice recording
+            // ══════════════════════════════════════════════════
+            if (!speechBusy) {
+                LOG_INFO("BUTTON", "DOUBLE PRESS — triggering voice recording");
+                speechTrigger = true;
+                vibrationPulse(100);  // Short feedback buzz
+            } else {
+                LOG_WARN("BUTTON", "Speech already in progress");
+            }
+        } else {
+            // ══════════════════════════════════════════════════
+            // SINGLE PRESS → Toggle emergency
+            // ══════════════════════════════════════════════════
+            xSemaphoreTake(actuatorMutex, portMAX_DELAY);
+            emergencyFlag = !emergencyFlag;
+            
+            if (emergencyFlag) {
+                LOG_ERROR("MAIN", "EMERGENCY ACTIVATED");
+                tftUpdateEmergency(true);
+                xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
+                dashState.emergencyActive = true;
+                xSemaphoreGive(mqttDashMutex);
+                mqttPublishAlert(true);
+            } else {
+                LOG_INFO("MAIN", "EMERGENCY CLEARED");
+                tftUpdateEmergency(false);
+                xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
+                dashState.emergencyActive = false;
+                xSemaphoreGive(mqttDashMutex);
+                mqttPublishAlert(false);
+            }
+            xSemaphoreGive(actuatorMutex);
+        }
+        pressCount = 0;  // Reset for next detection
+    }
 
     // ── Non-blocking actuator state machines ─────────────
     xSemaphoreTake(actuatorMutex, portMAX_DELAY);
@@ -513,24 +521,6 @@ prevButtonState = buttonPressed;
             strlcpy(dashState.sleepQuality, sq.c_str(), sizeof(dashState.sleepQuality));
             xSemaphoreGive(mqttDashMutex);
 
-            // ── Awake nudge — vibrate + open camera every 60 s ───
-            // Tracks how long the child has been continuously awake.
-            // Resets the awake-start timer as soon as they fall asleep.
-            /*if (sq == "Awake") {
-                if (now - lastAwakeNudge >= INTERVAL_AWAKE_NUDGE) {
-                    lastAwakeNudge = now;
-                    unsigned long awakeSeconds = (now - awakeStartTime) / 1000UL;
-                    LOG_INFO("MAIN", "Awake nudge — awake for %lu s", awakeSeconds);
-                    vibrationPulse(800);
-                    dashState.cameraOpen = true;   // dashboard will open camera for 20 s
-                }
-            } else {
-                // Child fell asleep — reset both timers
-                awakeStartTime = now;
-                lastAwakeNudge = now;
-                dashState.cameraOpen = false;
-            }*/
-           // ── State-based vibration + camera control ─────────────
             // ── Awake 1-minute trigger: vibration + camera (fires ONCE) ──
             if (sq == "Awake") {
 
@@ -587,17 +577,6 @@ prevButtonState = buttonPressed;
                 LOG_INFO("GSR", "Playing calming audio quote due to high stress");
             }
         }
-
-        // ── Hourly vibration reminder ─────────────────────
-        /*if (now - lastVibrationTime >= INTERVAL_VIBRATION_HOUR) {
-            if (!sleepDetectorIsSleeping()) {
-                LOG_INFO("MAIN", "Hourly vibration reminder");
-                vibrationPulse(1000);
-            } else {
-                LOG_INFO("MAIN", "Skipping vibration — user is sleeping");
-            }
-            lastVibrationTime = now;
-        }*/
     }
 
     // ── yield — lets WiFi/BT stack run between iterations ─
