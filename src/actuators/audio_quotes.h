@@ -1,11 +1,14 @@
 // =============================================================
 // Audio Quotes Manager — Maps motivational quotes to audio files
 // =============================================================
+// Uses ESP32-audioI2S library (Audio.h) for MP3 playback.
+// IMPORTANT: Call audioQuotesInit() once in setup().
+// IMPORTANT: Call audioQuotesLoop() every iteration in loop().
+// =============================================================
 #ifndef AUDIO_QUOTES_H
 #define AUDIO_QUOTES_H
 
 #include <Arduino.h>
-#include <map>
 
 // Quote categories
 enum QuoteCategory {
@@ -25,8 +28,37 @@ struct AudioQuote {
     uint16_t durationMs;        // Approximate duration in milliseconds
 };
 
-// Initialize the audio quotes system
+// ═══════════════════════════════════════════════════════════════
+// LIFECYCLE — Call these in setup() and loop()
+// ═══════════════════════════════════════════════════════════════
+
+// Initialize the audio quotes system — call ONCE in setup()
 void audioQuotesInit();
+
+// Process audio playback — call EVERY iteration in loop()
+// This is CRITICAL for audio to actually play!
+void audioQuotesLoop();
+
+// ═══════════════════════════════════════════════════════════════
+// PLAYBACK FUNCTIONS
+// ═══════════════════════════════════════════════════════════════
+
+// Play a specific audio file from LittleFS (e.g., "/q1.mp3")
+bool playAudioFile(const char* filepath);
+
+// Play a quote by looking up text in the AUDIO_QUOTE_MAP hashmap
+// This is the main function to use when TFT shows a quote
+bool playQuoteByHashmap(const char* quoteText);
+
+// Play a quote struct
+bool playQuote(const AudioQuote* quote);
+
+// Play a random quote from a category
+bool playQuoteByCategory(QuoteCategory category);
+
+// ═══════════════════════════════════════════════════════════════
+// QUERY FUNCTIONS
+// ═══════════════════════════════════════════════════════════════
 
 // Get a random quote from a specific category
 const AudioQuote* getRandomQuote(QuoteCategory category);
@@ -34,22 +66,21 @@ const AudioQuote* getRandomQuote(QuoteCategory category);
 // Get a specific quote by text (partial match)
 const AudioQuote* getQuoteByText(const char* searchText);
 
-// Play a quote (non-blocking, uses speaker system)
-bool playQuote(const AudioQuote* quote);
-
-// Play a quote by category
-bool playQuoteByCategory(QuoteCategory category);
-
 // Check if LittleFS audio file exists
 bool audioFileExists(const char* filepath);
+
+// Check if audio is currently playing
+bool audioQuotesIsPlaying();
+
+// Get the text of the currently playing quote
+const char* audioQuotesGetCurrentText();
 
 // List all available quotes (for debugging)
 void listAllQuotes();
 
-// Process audio playback loop (must be called regularly in main loop)
-void audioQuotesLoop();
-
-// Check if audio is currently playing
-bool audioQuotesIsPlaying();
+// ═══════════════════════════════════════════════════════════════
+// TEST FUNCTION — plays a test file to verify audio works
+// ═══════════════════════════════════════════════════════════════
+void audioQuotesTestPlay();
 
 #endif // AUDIO_QUOTES_H

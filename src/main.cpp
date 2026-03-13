@@ -29,7 +29,6 @@
 // Actuators
 #include "actuators/led_breathing.h"
 #include "actuators/vibration.h"
-#include "actuators/speaker.h"
 #include "actuators/audio_quotes.h"
 
 // Display
@@ -81,9 +80,6 @@ static bool hasRTC       = false;
 static bool hasCamera    = false;
 
 // ─── Forward declarations ──────────────────────────────────
-//static void onBreatheRequest();
-static void onAlarmOn();
-static void onAlarmOff();
 static void onVibrateRequest();
 static void onClearEmergency();
 static void speechTask(void* param);
@@ -94,7 +90,20 @@ static void onMqttCommand(const String& cmd);
 // ============================================================
 void setup() {
     Serial.begin(115200);
-    while (!Serial) delay(10);
+    delay(1000);
+
+    // ══════════════════════════════════════════════════════
+    // AUDIO FIRST — before anything else touches I2S/SPI
+    // ══════════════════════════════════════════════════════
+    audioQuotesInit();
+    audioQuotesTestPlay();
+    
+    // Let audio play for a bit before other init
+    for (int i = 0; i < 500; i++) {
+        audioQuotesLoop();
+        delay(10);
+    }
+
     logInit(LOG_LEVEL_DEBUG);
 
     // ── Extend task watchdog timeout to 30 s ─────────────
@@ -134,15 +143,10 @@ void setup() {
 
     // ── LED Breathing ────────────────────────────────────
     ledBreathingInit();
-    //ledBreathingInit();
     ledBreathingStart(); 
 
     // ── Vibration Motor ──────────────────────────────────
     vibrationInit();
-
-    // ── Speaker ──────────────────────────────────────────
-    speakerInit();
-    speakerTest();   // ← plays 3 tones at full volume; remove once speaker is confirmed working
 
     // ── Microphone ───────────────────────────────────────
     // micInit();   // DISABLED — testing sensors + MQTT first
@@ -212,8 +216,7 @@ void setup() {
     */
 
     // ── Ready ────────────────────────────────────────────
-    speakerBeepOK();
-    LOG_INFO("MAIN", "All systems go — sensor loop on Core 1, speech on Core 0");
+    LOG_INFO("MAIN", "All systems go — sensor loop on Core 1");
 }
 
 // ============================================================
@@ -285,26 +288,24 @@ static void speechTask(void* param) {
                         break;
                     case CMD_HELP_ME:
                     case CMD_EMERGENCY:
-                        LOG_WARN("SPEECH", "→ CMD_EMERGENCY: calling speakerAlarmStart()");
+                        LOG_WARN("SPEECH", "→ CMD_EMERGENCY: activating emergency");
                         xSemaphoreTake(actuatorMutex, portMAX_DELAY);
-                        speakerAlarmStart();
                         emergencyFlag = true;
                         xSemaphoreGive(actuatorMutex);
                         tftUpdateEmergency(true);
                         xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
                         dashState.emergencyActive = true;
                         xSemaphoreGive(mqttDashMutex);
-                        LOG_WARN("SPEECH", "→ Emergency active, alarm started");
+                        LOG_WARN("SPEECH", "→ Emergency active");
                         break;
                     case CMD_HOW_AM_I:
-                        LOG_INFO("SPEECH", "→ CMD_HOW_AM_I: calling speakerBeepOK()");
-                        speakerBeepOK();
+                        LOG_INFO("SPEECH", "→ CMD_HOW_AM_I: status check");
+                        // Could play a status audio file here
                         break;
                     case CMD_STOP:
-                        LOG_INFO("SPEECH", "→ CMD_STOP: stopping LED + alarm + emergency");
+                        LOG_INFO("SPEECH", "→ CMD_STOP: stopping LED + emergency");
                         xSemaphoreTake(actuatorMutex, portMAX_DELAY);
                         ledBreathingStop();
-                        speakerAlarmStop();
                         emergencyFlag = false;
                         xSemaphoreGive(actuatorMutex);
                         tftUpdateEmergency(false);
@@ -415,7 +416,7 @@ if (buttonPressed && !prevButtonState) {   // just pressed
 
     if (emergencyFlag) {
         LOG_ERROR("MAIN", "EMERGENCY ACTIVATED");
-        speakerAlarmStart();
+        // Could play an alarm MP3: playAudioFile("/alarm.mp3");
         tftUpdateEmergency(true);
         xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
         dashState.emergencyActive = true;
@@ -424,7 +425,6 @@ if (buttonPressed && !prevButtonState) {   // just pressed
     } 
     else {
         LOG_ERROR("MAIN", "EMERGENCY CLEARED");
-        speakerAlarmStop();
         tftUpdateEmergency(false);
         xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
         dashState.emergencyActive = false;
@@ -435,40 +435,10 @@ if (buttonPressed && !prevButtonState) {   // just pressed
 }
 
 prevButtonState = buttonPressed;
-    /*
-    bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
-    if (buttonPressed && !prevButtonState && !emergencyFlag) {
-        // Rising edge (just pressed)
-        emergencyFlag = true;
-        LOG_ERROR("MAIN", "EMERGENCY BUTTON PRESSED");
-        speakerAlarmStart();
-        tftUpdateEmergency(true);
-        dashState.emergencyActive = true;
-    }
-    prevButtonState = buttonPressed;
-*/
-
-    // ── No-Movement MPU Nudge (40 seconds) ───────────────
-    // Does NOT set emergencyFlag — just beeps like a buzzer to
-    // remind the child to move. Full alarm / emergency is button-only.
-    static unsigned long lastNudgeBeep = 0;
-    if (now - lastMovementTime >= NO_MOVEMENT_EMERGENCY_MS) {
-        // Start a new nudge beep pattern every 5 seconds (only if not already beeping)
-        if (now - lastNudgeBeep >= 5000UL && !speakerBuzzerIsActive()) {
-            LOG_WARN("MAIN", "No movement for %lu s — nudge beep",
-                     (now - lastMovementTime) / 1000UL);
-            speakerBuzzerStart();
-            lastNudgeBeep = now;
-        }
-    } else {
-        lastNudgeBeep = 0;   // reset so beep fires immediately next time threshold is hit
-    }
 
     // ── Non-blocking actuator state machines ─────────────
     xSemaphoreTake(actuatorMutex, portMAX_DELAY);
     bool breathingNow = ledBreathingUpdate();
-    speakerAlarmUpdate();
-    speakerBuzzerUpdate();
     vibrationUpdate();
     xSemaphoreGive(actuatorMutex);
 
@@ -641,14 +611,9 @@ prevButtonState = buttonPressed;
 // ============================================================
 //  Callbacks (web server remote control → Core 1 safe)
 // ============================================================
-//static void onBreatheRequest()   { ledBreathingStart(5); }     old code
-static void onAlarmOn()          { speakerAlarmStart(); }
-static void onAlarmOff()         { speakerAlarmStop(); }
 static void onVibrateRequest()   { vibrationPulse(800); }
 static void onClearEmergency()   {
-    // actuatorMutex is already held by the caller (onMqttCommand)
     emergencyFlag = false;
-    speakerAlarmStop();
     tftUpdateEmergency(false);
     xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
     dashState.emergencyActive = false;
@@ -667,10 +632,6 @@ static void onMqttCommand(const String& cmd) {
     xSemaphoreTake(actuatorMutex, portMAX_DELAY);
     if (cmd == "breathe") {
         ledBreathingStart();
-    } else if (cmd == "alarm_on") {
-        onAlarmOn();
-    } else if (cmd == "alarm_off") {
-        onAlarmOff();
     } else if (cmd == "vibrate") {
         onVibrateRequest();
     } else if (cmd == "clear_emergency") {

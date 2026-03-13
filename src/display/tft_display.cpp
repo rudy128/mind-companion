@@ -232,13 +232,17 @@ void tftUpdateStress(const String& level, float gsrValue) {
             const char* selectedQuote = quoteKeys[randomIndex].c_str();
             tft.println(selectedQuote);
             
-            // Play the corresponding audio from the quote
+            // Play the corresponding audio using the hashmap lookup
+            // Release TFT lock before audio playback to avoid deadlock
             TFT_UNLOCK();
-            const AudioQuote* audioQuote = getQuoteByText(selectedQuote);
-            if (audioQuote) {
-                playQuote(audioQuote);
+            
+            // Use the new function that directly looks up the hashmap
+            if (playQuoteByHashmap(selectedQuote)) {
                 LOG_INFO("TFT", "Playing audio for quote: '%s'", selectedQuote);
+            } else {
+                LOG_WARN("TFT", "Failed to play audio for quote: '%s'", selectedQuote);
             }
+            
             TFT_LOCK();
         }
     } else if (level == "Moderate") {
