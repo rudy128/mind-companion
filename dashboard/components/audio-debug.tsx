@@ -26,8 +26,17 @@ export function AudioDebug({ audioBase64, onClear }: AudioDebugProps) {
     }
 
     try {
+      // Clean the base64 string - remove any whitespace or invalid chars
+      const cleanBase64 = audioBase64.replace(/[^A-Za-z0-9+/=]/g, '');
+      
+      // Validate base64 length (should be multiple of 4)
+      const paddedBase64 = cleanBase64.padEnd(
+        cleanBase64.length + (4 - (cleanBase64.length % 4)) % 4,
+        '='
+      );
+      
       // Decode base64 to binary
-      const binaryString = atob(audioBase64);
+      const binaryString = atob(paddedBase64);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
@@ -38,10 +47,14 @@ export function AudioDebug({ audioBase64, onClear }: AudioDebugProps) {
       const url = URL.createObjectURL(blob);
       setAudioUrl(url);
 
+      console.log("[AudioDebug] Created audio URL, size:", bytes.length, "bytes");
+
       // Cleanup previous URL
       return () => URL.revokeObjectURL(url);
     } catch (e) {
-      console.error("Failed to decode audio:", e);
+      console.error("[AudioDebug] Failed to decode audio:", e);
+      console.error("[AudioDebug] Base64 length:", audioBase64?.length);
+      console.error("[AudioDebug] First 100 chars:", audioBase64?.substring(0, 100));
     }
   }, [audioBase64]);
 
