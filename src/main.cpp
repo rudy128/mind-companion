@@ -162,8 +162,9 @@ void setup() {
     pinMode(BUTTON_PIN, INPUT_PULLUP);
 
     // ── LED Breathing ────────────────────────────────────
+    // Init only — breathing starts automatically when HR is abnormal
+    // (in the 1-second tick below) or via voice / dashboard command.
     ledBreathingInit();
-    ledBreathingStart(); 
 
     // ── Vibration Motor ──────────────────────────────────
     vibrationInit();
@@ -317,7 +318,10 @@ static void speechTask(void* param) {
                 xSemaphoreTake(actuatorMutex, portMAX_DELAY);
                 switch (cmd) {
                     case CMD_BREATHING_PATTERN:
-                        ledBreathingStart();
+                        // Timed mode: auto-stops after 35 seconds regardless
+                        // of HR state, so the user isn't stuck with a running LED.
+                        ledBreathingStartTimed(35000UL);
+                        LOG_INFO("SPEECH", "Voice breathing pattern — will run for 35 s");
                         break;
                     case CMD_HELP_ME:
                     case CMD_EMERGENCY:
@@ -525,9 +529,25 @@ void loop() {
                 lastLoggedFinger = finger;
             }
 
-            if (heartRateIsAbnormal() && !ledBreathingIsActive()) {
-                //LOG_WARN("MAIN", "Abnormal HR %d bpm — starting breathing LED", bpm);
-                //ledBreathingStart(5);
+            // ── Auto-start breathing on abnormal HR ─────────────────
+            // Only start indefinite mode if not already in a timed
+            // (voice-triggered) session — we don't want to override it.
+            if (heartRateIsAbnormal()) {
+                xSemaphoreTake(actuatorMutex, portMAX_DELAY);
+                if (!ledBreathingIsActive()) {
+                    ledBreathingStart();   // indefinite: stops when HR normalises
+                    LOG_WARN("MAIN", "Abnormal HR %d bpm — starting breathing LED", bpm);
+                }
+                xSemaphoreGive(actuatorMutex);
+            } else {
+                // HR is back to normal: stop the LED only if it was
+                // started in indefinite (HR) mode, not timed (voice) mode.
+                xSemaphoreTake(actuatorMutex, portMAX_DELAY);
+                if (ledBreathingIsActive() && !ledBreathingIsTimedMode()) {
+                    ledBreathingStop();
+                    LOG_INFO("MAIN", "HR normalised (%d bpm) — stopping breathing LED", bpm);
+                }
+                xSemaphoreGive(actuatorMutex);
             }
         }
 

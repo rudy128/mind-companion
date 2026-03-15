@@ -1,40 +1,32 @@
 // =============================================================
-// LED Breathing Pattern — 4× LEDs via simple ON/OFF toggle
+// LED Breathing Pattern — Non-blocking linear fade (PNP inverted)
+// Matches the working standalone sketch: duty 255→0 (on), 0→255 (off).
+// Two trigger modes:
+//   ledBreathingStart()              — indefinite (HR-triggered, dashboard cmd)
+//   ledBreathingStartTimed(ms)       — auto-stops after ms milliseconds (voice)
 // =============================================================
-/*
-#ifndef LED_BREATHING_H
-#define LED_BREATHING_H
-
-#include <Arduino.h>
-
-void ledBreathingInit();
-
-// Non-blocking breathing: call every loop iteration while active.
-// Toggles the LED every 4 seconds (ON phase = 4s, OFF phase = 4s).
-// One cycle = one ON+OFF pair (8 seconds total).
-// ledBreathingStart(cycles) — pass 0 for infinite, or N to auto-stop after N cycles.
-void ledBreathingStart(int cycles = 3);
-bool ledBreathingUpdate();   // returns true if still breathing
-void ledBreathingStop();
-bool ledBreathingIsActive();
-
-#endif // LED_BREATHING_H
-*/
-
 #pragma once
 #include <Arduino.h>
 
-// Initialize breathing LED
+// Initialize LEDC channel — call once in setup()
 void ledBreathingInit();
 
-// Start breathing animation
+// Start indefinite breathing (stopped manually via ledBreathingStop())
 void ledBreathingStart();
 
-// Stop breathing animation
+// Start breathing that auto-stops after `durationMs` milliseconds
+void ledBreathingStartTimed(unsigned long durationMs);
+
+// Stop breathing immediately (turns LED off)
 void ledBreathingStop();
 
-// Update breathing (call in loop)
+// Call every loop() iteration — drives the non-blocking state machine.
+// Returns true while breathing is active.
 bool ledBreathingUpdate();
 
-// Check if breathing is active
+// True if the LED is currently breathing
 bool ledBreathingIsActive();
+
+// True if breathing was started in timed (voice) mode and has not expired yet.
+// Used by main.cpp to avoid stopping a timed session when HR normalises.
+bool ledBreathingIsTimedMode();

@@ -9,19 +9,24 @@ VoiceCommand commandParse(const String& text) {
     String lower = text;
     lower.toLowerCase();
 
-    if (lower.indexOf("breathing")  >= 0 || lower.indexOf("breathe") >= 0)
+    // Breathing intent — catch all natural speech variations:
+    //   "breathing pattern", "help me breathe", "help with breathing",
+    //   "i need breathing pattern", "breathe", etc.
+    if (lower.indexOf("breath") >= 0)
         return CMD_BREATHING_PATTERN;
 
     if (lower.indexOf("how am i")   >= 0 || lower.indexOf("status") >= 0)
         return CMD_HOW_AM_I;
 
-    if (lower.indexOf("help")       >= 0 || lower.indexOf("help me") >= 0)
+    // Only match plain "help" as CMD_HELP_ME if no breathing keyword present
+    // ("help me breathe" is already caught above)
+    if (lower.indexOf("help")      >= 0 || lower.indexOf("help me") >= 0)
         return CMD_HELP_ME;
 
-    if (lower.indexOf("emergency")  >= 0 || lower.indexOf("panic") >= 0)
+    if (lower.indexOf("emergency") >= 0 || lower.indexOf("panic") >= 0)
         return CMD_EMERGENCY;
 
-    if (lower.indexOf("stop")       >= 0 || lower.indexOf("cancel") >= 0)
+    if (lower.indexOf("stop")      >= 0 || lower.indexOf("cancel") >= 0)
         return CMD_STOP;
 
     return CMD_NONE;
