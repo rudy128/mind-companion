@@ -1,117 +1,91 @@
 // =============================================================
 // LED Breathing Pattern — Non-blocking linear fade (PNP inverted)
 //
-// Replicates the working standalone sketch:
+// Pure repeating worker — matches the working standalone sketch:
 //   Fade in : duty 255 → 0   (LED brightens, 10 ms/step ≈ 2.55 s)
 //   Fade out: duty 0   → 255 (LED dims,      10 ms/step ≈ 2.55 s)
-//   Pause   : 1 second between cycles
+//   Pause   : 1 s between cycles
 //
-// Two trigger modes come from the outside:
-//   ledBreathingStart()            → indefinite  (HR triggered / dashboard cmd)
-//   ledBreathingStartTimed(ms)     → auto-stops  (voice command, ~35 s)
+// NO timer logic here — orchestration (main.cpp) owns start/stop timing.
+// The LED will keep cycling until ledBreathingStop() is called externally.
 // =============================================================
 #include "led_breathing.h"
 #include "../config.h"
 
-// ── LEDC config (must match config.h LED_PIN) ────────────────
+// ── LEDC config ───────────────────────────────────────────────
 static const int CHANNEL = 0;
 static const int FREQ    = 5000;
 static const int RES     = 8;
 
-// ── Fade timing (matches working standalone sketch) ──────────
-static const unsigned long STEP_MS  = 10;    // 10 ms per duty step → 2.55 s fade
-static const unsigned long PAUSE_MS = 1000;  // 1 s pause at end of each cycle
+// ── Fade timing — matches working standalone sketch ───────────
+static const unsigned long STEP_MS  = 10;    // 10 ms/step × 256 = 2.56 s per fade
+static const unsigned long PAUSE_MS = 1000;  // 1 s pause at end of each full cycle
 
-// ── State machine ────────────────────────────────────────────
-static bool          _active        = false;
-static bool          _fadingIn      = true;  // true  = 255→0  (brighten PNP)
-                                             // false = 0→255  (dim PNP)
-static bool          _pausing       = false;
-static int           _duty          = 255;   // start LED off (PNP: 255 = off)
-static unsigned long _lastStepMs    = 0;
-static unsigned long _pauseStartMs  = 0;
+// ── State machine ─────────────────────────────────────────────
+static bool          _active       = false;
+static bool          _fadingIn     = true;   // true  = duty 255→0 (brighten)
+                                             // false = duty 0→255 (dim)
+static bool          _pausing      = false;
+static int           _duty         = 255;    // PNP: 255 = LED off (start dark)
+static unsigned long _lastStepMs   = 0;
+static unsigned long _pauseStartMs = 0;
 
-// ── Timed mode ───────────────────────────────────────────────
-static bool          _timedMode     = false;
-static unsigned long _endTimeMs     = 0;     // millis() at which timed mode expires
-
-// ── Public API ───────────────────────────────────────────────
+// ── Public API ────────────────────────────────────────────────
 
 void ledBreathingInit() {
     ledcSetup(CHANNEL, FREQ, RES);
     ledcAttachPin(LED_PIN, CHANNEL);
-    ledcWrite(CHANNEL, 255);  // LED off (PNP inverted)
+    ledcWrite(CHANNEL, 255);   // ensure LED is off on boot
 }
 
-static void _startInternal() {
+void ledBreathingStart() {
     _active       = true;
     _fadingIn     = true;
-    _duty         = 255;    // begin from LED-off state
+    _duty         = 255;       // begin from LED-off
     _pausing      = false;
     _lastStepMs   = millis();
 }
 
-void ledBreathingStart() {
-    _timedMode    = false;
-    _endTimeMs    = 0;
-    _startInternal();
-}
-
-void ledBreathingStartTimed(unsigned long durationMs) {
-    _timedMode    = true;
-    _endTimeMs    = millis() + durationMs;
-    _startInternal();
-}
-
 void ledBreathingStop() {
-    _active     = false;
-    _timedMode  = false;
-    _endTimeMs  = 0;
-    ledcWrite(CHANNEL, 255);   // LED off
+    _active = false;
+    ledcWrite(CHANNEL, 255);   // LED off (PNP: 255 = off)
 }
 
-bool ledBreathingIsActive()   { return _active; }
-bool ledBreathingIsTimedMode() { return _active && _timedMode; }
+bool ledBreathingIsActive() { return _active; }
 
 bool ledBreathingUpdate() {
     if (!_active) return false;
 
     unsigned long now = millis();
 
-    // ── Timed-mode expiry check ──────────────────────────────
-    if (_timedMode && _endTimeMs > 0 && now >= _endTimeMs) {
-        ledBreathingStop();
-        return false;
-    }
-
     // ── Pause between cycles ─────────────────────────────────
     if (_pausing) {
         if (now - _pauseStartMs >= PAUSE_MS) {
             _pausing  = false;
             _fadingIn = true;
-            _duty     = 255;          // restart from LED-off
+            _duty     = 255;     // restart from LED-off
         }
         return true;
     }
 
-    // ── Rate-limit steps to STEP_MS ─────────────────────────
+    // ── Rate-limit to STEP_MS ────────────────────────────────
     if (now - _lastStepMs < STEP_MS) return true;
     _lastStepMs = now;
 
     if (_fadingIn) {
-        // Fade in: duty 255 → 0  (PNP: 0 = full brightness)
+        // Fade in: 255 → 0  (PNP: decreasing duty = brighter)
         _duty--;
         if (_duty <= 0) {
             _duty     = 0;
-            _fadingIn = false;  // switch to fade-out
+            _fadingIn = false;
         }
     } else {
-        // Fade out: duty 0 → 255  (PNP: 255 = off)
+        // Fade out: 0 → 255  (PNP: increasing duty = dimmer)
         _duty++;
         if (_duty >= 255) {
             _duty          = 255;
             _pausing       = true;
-            _pauseStartMs  = now;   // start 1-second pause
+            _pauseStartMs  = now;
         }
     }
 

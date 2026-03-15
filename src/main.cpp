@@ -70,8 +70,13 @@ static unsigned long lastPressTime    = 0;
 static uint8_t       pressCount       = 0;
 static bool          buttonWasPressed = false;
 
-// ─── Emergency state ───────────────────────────────────────
+// ─── Emergency state ───────────────────────────────────────────
 static bool emergencyFlag = false;
+
+// ─── Breathing session timer ──────────────────────────────────
+// 0 = indefinite (HR-triggered or dashboard cmd)
+// non-zero = millis() timestamp at which the voice session expires
+static unsigned long breathingEndMs = 0;
 
 // ─── Actuator mutex — protects actuator start/stop/update + emergencyFlag
 //     from races between Core 0 (MQTT command callback) and Core 1 (loop).
@@ -318,9 +323,10 @@ static void speechTask(void* param) {
                 xSemaphoreTake(actuatorMutex, portMAX_DELAY);
                 switch (cmd) {
                     case CMD_BREATHING_PATTERN:
-                        // Timed mode: auto-stops after 35 seconds regardless
-                        // of HR state, so the user isn't stuck with a running LED.
-                        ledBreathingStartTimed(35000UL);
+                        // Start the continuous fade worker; the orchestration
+                        // timer (breathingEndMs) will stop it after 35 seconds.
+                        ledBreathingStart();
+                        breathingEndMs = millis() + 35000UL;
                         LOG_INFO("SPEECH", "Voice breathing pattern — will run for 35 s");
                         break;
                     case CMD_HELP_ME:
@@ -486,8 +492,18 @@ void loop() {
         pressCount = 0;  // Reset for next detection
     }
 
-    // ── Non-blocking actuator state machines ─────────────
+    // ── Non-blocking actuator state machines ─────────────────
     xSemaphoreTake(actuatorMutex, portMAX_DELAY);
+
+    // Orchestration timer: stop a voice-triggered breathing session once expired.
+    // HR-triggered sessions have breathingEndMs == 0 and are stopped by the
+    // 1-second HR normalisation check further below.
+    if (breathingEndMs > 0 && millis() >= breathingEndMs && ledBreathingIsActive()) {
+        ledBreathingStop();
+        breathingEndMs = 0;
+        LOG_INFO("MAIN", "Voice breathing session ended");
+    }
+
     bool breathingNow = ledBreathingUpdate();
     vibrationUpdate();
     xSemaphoreGive(actuatorMutex);
@@ -530,20 +546,20 @@ void loop() {
             }
 
             // ── Auto-start breathing on abnormal HR ─────────────────
-            // Only start indefinite mode if not already in a timed
-            // (voice-triggered) session — we don't want to override it.
+            // Don't override an active voice-triggered session (breathingEndMs > 0).
             if (heartRateIsAbnormal()) {
                 xSemaphoreTake(actuatorMutex, portMAX_DELAY);
                 if (!ledBreathingIsActive()) {
-                    ledBreathingStart();   // indefinite: stops when HR normalises
+                    ledBreathingStart();   // indefinite — no end time set
+                    breathingEndMs = 0;
                     LOG_WARN("MAIN", "Abnormal HR %d bpm — starting breathing LED", bpm);
                 }
                 xSemaphoreGive(actuatorMutex);
             } else {
-                // HR is back to normal: stop the LED only if it was
-                // started in indefinite (HR) mode, not timed (voice) mode.
+                // HR is normal: stop only if this is an HR-triggered (indefinite)
+                // session. Leave a voice-triggered session (breathingEndMs > 0) running.
                 xSemaphoreTake(actuatorMutex, portMAX_DELAY);
-                if (ledBreathingIsActive() && !ledBreathingIsTimedMode()) {
+                if (ledBreathingIsActive() && breathingEndMs == 0) {
                     ledBreathingStop();
                     LOG_INFO("MAIN", "HR normalised (%d bpm) — stopping breathing LED", bpm);
                 }
@@ -669,6 +685,7 @@ static void onMqttCommand(const String& cmd) {
     xSemaphoreTake(actuatorMutex, portMAX_DELAY);
     if (cmd == "breathe") {
         ledBreathingStart();
+        breathingEndMs = 0;   // indefinite — dashboard controls stop
     } else if (cmd == "vibrate") {
         onVibrateRequest();
     } else if (cmd == "clear_emergency") {
