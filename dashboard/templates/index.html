@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>M.I.N.D. Companion Dashboard</title>
+  <meta name="description" content="Real-time mental wellness monitoring — heart rate, stress, sleep, motion, voice commands" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────── -->
+<header class="header">
+  <div class="header-inner">
+    <div class="brand">
+      <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <div>
+        <h1 class="brand-title">M.I.N.D. Companion</h1>
+        <p class="brand-sub">Real-time wellness monitoring</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <label for="esp-ip" class="label-muted">Device IP</label>
+      <input id="esp-ip" type="text" class="ip-input" placeholder="192.168.x.x" value="172.20.10.8" />
+      <div id="conn-badge" class="badge badge-connecting">
+        <span class="badge-dot"></span>
+        <span id="conn-label">Connecting</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ── Emergency Banner ───────────────────────────────── -->
+<div id="emergency-banner" class="emergency-banner hidden">
+  <div class="emergency-inner">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-lg"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <div>
+      <div class="emergency-title">Emergency Active</div>
+      <div class="emergency-desc">Alarm is sounding on the device. Press clear to deactivate.</div>
+    </div>
+    <button class="btn btn-danger" onclick="sendCmd('clear_emergency')">Clear Emergency</button>
+  </div>
+</div>
+
+<!-- ── Main ───────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- Waiting state: not connected -->
+  <div id="wait-conn" class="wait-card">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="icon-xl muted"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+    <p class="wait-title">Connecting to MQTT broker</p>
+    <p class="wait-sub">Ensure Mosquitto is running on <code>localhost:1883</code></p>
+  </div>
+
+  <!-- Waiting state: connected but no data -->
+  <div id="wait-data" class="wait-card hidden">
+    <div class="spinner"></div>
+    <p class="wait-title">Waiting for sensor data</p>
+    <p class="wait-sub">Data will appear when the ESP32 starts publishing.</p>
+  </div>
+
+  <!-- Sensor Grid -->
+  <div id="sensor-grid" class="grid hidden">
+
+    <!-- Heart Rate -->
+    <div class="card card-hr">
+      <div class="card-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm" id="hr-icon"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        <span class="card-label">Heart Rate</span>
+      </div>
+      <div class="hr-big">
+        <span id="hr-bpm" class="hr-value muted">--</span>
+        <span class="hr-unit">bpm</span>
+      </div>
+      <p id="hr-status" class="card-sub">No finger</p>
+      <div class="chart-wrap">
+        <canvas id="hr-chart" height="72"></canvas>
+      </div>
+    </div>
+
+    <!-- Stress -->
+    <div class="card">
+      <div class="card-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span class="card-label">Stress Level</span>
+      </div>
+      <p id="stress-level" class="stress-big muted">--</p>
+      <p id="gsr-value" class="card-sub font-mono">-- µS</p>
+    </div>
+
+    <!-- Sleep -->
+    <div class="card">
+      <div class="card-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <span class="card-label">Sleep Quality</span>
+      </div>
+      <p id="sleep-desc" class="card-sub mt-sm">Monitoring</p>
+      <span id="sleep-badge" class="badge badge-outline mt-sm">--</span>
+    </div>
+
+    <!-- Motion / IMU -->
+    <div class="card">
+      <div class="card-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M5 3l14 9-14 9V3z"/></svg>
+        <span class="card-label">Motion / IMU</span>
+      </div>
+      <div class="imu-grid">
+        <div class="imu-row"><span class="imu-label">X</span><span id="ax-val" class="imu-val font-mono">--</span></div>
+        <div class="imu-row"><span class="imu-label">Y</span><span id="ay-val" class="imu-val font-mono">--</span></div>
+        <div class="imu-row"><span class="imu-label">Z</span><span id="az-val" class="imu-val font-mono">--</span></div>
+        <div class="imu-row"><span class="imu-label">Temp</span><span id="temp-val" class="imu-val font-mono">-- °C</span></div>
+      </div>
+    </div>
+
+    <!-- Camera -->
+    <div class="card">
+      <div class="card-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        <span class="card-label">Live Camera</span>
+      </div>
+      <p class="card-sub">MJPEG stream from ESP32</p>
+      <div id="cam-closed">
+        <button class="btn btn-outline w-full mt-sm" onclick="openCamera()">Open Camera Stream</button>
+      </div>
+      <div id="cam-open" class="hidden">
+        <div class="cam-frame">
+          <img id="cam-img" alt="Live camera feed from ESP32" />
+        </div>
+        <button class="btn btn-secondary w-full mt-sm" onclick="closeCamera()">Close Stream</button>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="card">
+      <div class="card-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        <span class="card-label">Device Controls</span>
+      </div>
+      <p class="card-sub">Send commands via MQTT</p>
+      <div class="controls-grid mt-sm">
+        <button class="btn btn-primary" id="breathe-btn" onclick="sendCmd('breathe')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-xs"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          Breathe
+          <span id="breathing-dot" class="breath-dot hidden"></span>
+        </button>
+        <button class="btn btn-danger" onclick="sendCmd('alarm_on')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-xs"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          Alarm ON
+        </button>
+        <button class="btn btn-secondary" onclick="sendCmd('alarm_off')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-xs"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          Alarm OFF
+        </button>
+        <button class="btn btn-outline" onclick="sendCmd('vibrate')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-xs"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+          Vibrate
+        </button>
+      </div>
+    </div>
+
+    <!-- Device Info -->
+    <div class="card">
+      <div class="card-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+        <span class="card-label">Device Info</span>
+      </div>
+      <p class="card-sub">ESP32-S3 system status</p>
+      <div class="info-row mt-sm">
+        <span class="muted">Free Heap</span>
+        <span id="heap-val" class="font-mono">-- KB</span>
+      </div>
+      <div class="heap-bar-wrap">
+        <div id="heap-bar" class="heap-bar" style="width:0%"></div>
+      </div>
+      <div class="info-row mt-sm">
+        <span class="muted">Uptime</span>
+        <span id="uptime-val" class="font-mono">--</span>
+      </div>
+      <div class="info-row mt-sm">
+        <span class="muted">Last Voice</span>
+        <span id="voice-val" class="font-mono truncate">—</span>
+      </div>
+    </div>
+
+    <!-- Mic Debug -->
+    <div class="card">
+      <div class="card-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        <span class="card-label">Mic Debug</span>
+      </div>
+      <p class="card-sub">Listen to what the ESP32 microphone recorded</p>
+      <div id="audio-empty" class="audio-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="icon-xl muted"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        <p>No audio recorded yet</p>
+        <p class="text-xs">Double-press the button on ESP32 to record</p>
+      </div>
+      <div id="audio-player" class="hidden">
+        <audio id="audio-el" controls class="w-full"></audio>
+        <div class="audio-actions">
+          <button class="btn btn-outline btn-sm" onclick="downloadAudio()">↓ Download</button>
+          <button class="btn btn-danger btn-sm" onclick="clearAudio()">✕ Clear</button>
+        </div>
+        <p id="audio-size" class="text-xs muted mt-sm"></p>
+      </div>
+      <!-- AI Response -->
+      <div id="ai-section" class="hidden">
+        <div class="divider"></div>
+        <div class="card-head mt-sm mb-sm">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>
+          <span class="card-label">OpenAI Response (Raw)</span>
+        </div>
+        <pre id="ai-response" class="ai-pre"></pre>
+      </div>
+    </div>
+
+  </div><!-- /grid -->
+
+  <!-- Logs -->
+  <div class="mt-lg">
+    <div class="card logs-card">
+      <div class="logs-header">
+        <div class="card-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          <span class="card-label">Device Logs</span>
+        </div>
+        <div class="logs-toolbar">
+          <span id="log-count" class="text-xs muted">0 entries</span>
+          <div class="filter-group">
+            <button class="filter-btn active" data-level="ALL">ALL</button>
+            <button class="filter-btn" data-level="DEBUG">DEBUG</button>
+            <button class="filter-btn" data-level="INFO">INFO</button>
+            <button class="filter-btn" data-level="WARN">WARN</button>
+            <button class="filter-btn" data-level="ERROR">ERROR</button>
+          </div>
+          <button class="btn btn-ghost btn-icon" onclick="clearLogs()" title="Clear logs">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="log-area" id="log-area">
+        <p class="muted text-sm">Waiting for logs...</p>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ── Footer ─────────────────────────────────────────── -->
+<footer class="footer">
+  M.I.N.D. Companion &middot; ESP32-S3 &rarr; MQTT &rarr; Flask Dashboard
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
