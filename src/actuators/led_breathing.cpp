@@ -17,9 +17,13 @@ static const int CHANNEL = 0;
 static const int FREQ    = 5000;
 static const int RES     = 8;
 
-// ── Fade timing — matches working standalone sketch ───────────
-static const unsigned long STEP_MS  = 10;    // 10 ms/step × 256 = 2.56 s per fade
-static const unsigned long PAUSE_MS = 1000;  // 1 s pause at end of each full cycle
+// ── Fade timing — ~3 s per full cycle ───────────────────────
+//   Fade in : 255 steps × 5 ms = 1.275 s
+//   Fade out: 255 steps × 5 ms = 1.275 s
+//   Pause   : 0.4 s
+//   Total   : ≈ 2.95 s
+static const unsigned long STEP_MS  = 5;     // ms per duty step
+static const unsigned long PAUSE_MS = 400;   // ms pause at end of each cycle
 
 // ── State machine ─────────────────────────────────────────────
 static bool          _active       = false;
