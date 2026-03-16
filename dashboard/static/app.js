@@ -8,12 +8,13 @@
 const MAX_HR_HISTORY = 50;
 const MAX_LOGS       = 200;
 
-let hrHistory  = [];
-let allLogs    = [];
-let logFilter  = "ALL";
-let audioBlob  = null;
-let audioUrl   = null;
-let connected  = false;
+let hrHistory    = [];
+let allLogs      = [];
+let logFilter    = "ALL";
+let audioBlob    = null;
+let audioUrl     = null;
+let connected    = false;
+let camAutoOpened = false;  // true when camera was opened by firmware (not user)
 
 // ── DOM refs ───────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -191,10 +192,16 @@ function updateData(d) {
 
   $("voice-val").textContent = d.voice || "—";
 
-  // ── Auto-open camera if ESP32 flagged it ──────────────────
-  if (d.camOpen && d.ip) {
-    const espIp = $("esp-ip").value || d.ip;
-    openCamera(espIp);
+  // ── Camera: auto-open when firmware signals, auto-close when signal ends ──
+  // camAutoOpened flag ensures we never auto-close a stream the user opened manually.
+  if (d.camOpen) {
+    if ($("#cam-open").classList.contains("hidden")) {
+      openCamera($("#esp-ip").value || d.ip);
+      camAutoOpened = true;
+    }
+  } else if (camAutoOpened) {
+    closeCamera();
+    camAutoOpened = false;
   }
 
   // ── Auto-update IP input ───────────────────────────────────
@@ -311,24 +318,48 @@ function downloadAudio() {
 }
 
 // ── Camera ─────────────────────────────────────────────────────
+// IMPORTANT: never use outerHTML to replace #cam-img — that destroys
+// the element and breaks all subsequent open/close calls until page refresh.
+// Instead, show a sibling error overlay and keep the <img> in place.
 function openCamera(ip) {
   const espIp = ip || $("esp-ip").value;
   const url   = `http://${espIp}:81/stream`;
-  $("cam-img").src = url;
-  $("cam-img").onerror = () => {
-    $("cam-img").outerHTML =
-      `<div style="color:var(--fg-muted);text-align:center;padding:2rem;font-size:.8rem">
-        Cannot reach camera at ${espIp}:81
-      </div>`;
+
+  const img = $("cam-img");
+  const err = $("cam-error");
+
+  // Reset any previous error state
+  if (err)  err.classList.add("hidden");
+  img.style.display = "block";
+  img.src = url;
+
+  img.onerror = () => {
+    img.style.display = "none";
+    if (err) {
+      err.textContent = `Cannot reach camera at ${espIp}:81`;
+      err.classList.remove("hidden");
+    }
   };
+  img.onload = () => {
+    img.style.display = "block";
+    if (err) err.classList.add("hidden");
+  };
+
   $("cam-closed").classList.add("hidden");
   $("cam-open").classList.remove("hidden");
 }
 
 function closeCamera() {
-  $("cam-img").src = "";
+  const img = $("cam-img");
+  img.src           = "";
+  img.onerror       = null;
+  img.onload        = null;
+  img.style.display = "block";
+  const err = $("cam-error");
+  if (err) err.classList.add("hidden");
   $("cam-closed").classList.remove("hidden");
   $("cam-open").classList.add("hidden");
+  camAutoOpened = false;
 }
 
 // ── Send command ───────────────────────────────────────────────

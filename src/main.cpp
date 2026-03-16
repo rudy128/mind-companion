@@ -78,6 +78,11 @@ static bool emergencyFlag = false;
 // non-zero = millis() timestamp at which the voice session expires
 static unsigned long breathingEndMs = 0;
 
+// ─── Awake-nudge camera window ────────────────────────────────
+// Set to millis()+20000 when the awake nudge fires.
+// dashState.cameraOpen is driven by this value every 1-second tick.
+static unsigned long camOpenUntilMs = 0;
+
 // ─── Actuator mutex — protects actuator start/stop/update + emergencyFlag
 //     from races between Core 0 (MQTT command callback) and Core 1 (loop).
 //     Lock ordering: actuatorMutex → mqttDashMutex (never reversed).
@@ -595,35 +600,48 @@ void loop() {
             strlcpy(dashState.sleepQuality, sq.c_str(), sizeof(dashState.sleepQuality));
             xSemaphoreGive(mqttDashMutex);
 
-            // ── Awake 1-minute trigger: vibration + camera (fires ONCE) ──
+            // ── Awake periodic nudge: vibrate 2 s + camera 20 s, repeats every minute ──
+            //
+            // Logic:
+            //   • Track when user first becomes Awake (awakeStartTime).
+            //   • Once they have been Awake for ≥60 s, fire the nudge:
+            //       - Vibrate for 2 s (short haptic reminder).
+            //       - Set camOpenUntilMs = now + 20 s  (camera window opens on dashboard).
+            //       - Reset awakeNudgeFired so the 60-s clock restarts — nudge repeats
+            //         every minute as long as the user stays Awake.
+            //   • dashState.cameraOpen is driven by camOpenUntilMs every 1-s tick,
+            //     independent of the nudge trigger.
             if (sq == "Awake") {
+                if (awakeStartTime == 0) awakeStartTime = now;
 
-                // Start timer when user first becomes awake
-                if (awakeStartTime == 0) {
-                    awakeStartTime = now;
-                }
-
-                // Only trigger ONCE after 1 minute of continuous awake
                 if ((now - awakeStartTime >= 60000UL) && !awakeNudgeFired) {
-                    LOG_INFO("MAIN", "User awake ≥ 1 min — Vibrating + Camera ON");
-                    vibrationPulse(300);         // short non-disruptive pulse
-                    xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
-                    dashState.cameraOpen = true; // Turn camera ON (one-shot for dashboard)
-                    xSemaphoreGive(mqttDashMutex);
-                    awakeNudgeFired = true;      // don't fire again until user sleeps
+                    LOG_INFO("MAIN", "Awake ≥60 s nudge: vibrating 2 s, camera on for 20 s");
+                    xSemaphoreTake(actuatorMutex, portMAX_DELAY);
+                    vibrationPulse(2000);   // 2-second haptic nudge
+                    xSemaphoreGive(actuatorMutex);
+                    camOpenUntilMs  = now + 20000UL;  // camera window: 20 s
+                    awakeNudgeFired = true;            // arms the 60-s reset below
+                    awakeStartTime  = now;             // restart 60-s clock for next nudge
+                }
+                // Once the nudge fired, wait for the camera window to expire,
+                // then clear awakeNudgeFired so the next 60-s cycle can trigger.
+                if (awakeNudgeFired && camOpenUntilMs > 0 && now >= camOpenUntilMs) {
+                    awakeNudgeFired = false;  // ready to fire again next minute
                 }
 
-            } else {  // Light Sleep / Deep Sleep
-
-                // Reset awake timer & nudge flag
+            } else {  // Light Sleep / Deep Sleep / Restless
                 awakeStartTime  = 0;
                 awakeNudgeFired = false;
-                if (dashState.cameraOpen) {
-                    LOG_INFO("MAIN", "User sleeping — Camera OFF");
-                    xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
-                    dashState.cameraOpen = false;
-                    xSemaphoreGive(mqttDashMutex);
-                }
+                camOpenUntilMs  = 0;   // cancel any active camera window
+            }
+
+            // Drive dashState.cameraOpen from camOpenUntilMs window
+            bool camShouldBeOpen = (camOpenUntilMs > 0 && now < camOpenUntilMs);
+            if (dashState.cameraOpen != camShouldBeOpen) {
+                xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
+                dashState.cameraOpen = camShouldBeOpen;
+                xSemaphoreGive(mqttDashMutex);
+                LOG_INFO("MAIN", "Camera %s", camShouldBeOpen ? "ON (awake window)" : "OFF");
             }
         }
 
