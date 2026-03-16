@@ -193,13 +193,23 @@ function updateData(d) {
   $("voice-val").textContent = d.voice || "—";
 
   // ── Camera: auto-open when firmware signals, auto-close when signal ends ──
-  // camAutoOpened flag ensures we never auto-close a stream the user opened manually.
-  if (d.camOpen) {
-    if ($("#cam-open").classList.contains("hidden")) {
-      openCamera($("#esp-ip").value || d.ip);
+  // Two-layer close guarantee:
+  //   1. Strict SSE check: d.camOpen === true, so undefined/false both trigger close path.
+  //   2. Backup setTimeout: if SSE camOpen=false packet is ever lost, the timer closes
+  //      the stream at 22s regardless (firmware window is 20s).
+  if (d.camOpen === true) {
+    if ($("cam-open").classList.contains("hidden")) {
+      openCamera($("esp-ip").value || d.ip);
       camAutoOpened = true;
+      // Backup timer — clear any previous one first
+      if (window._camCloseTimer) clearTimeout(window._camCloseTimer);
+      window._camCloseTimer = setTimeout(() => {
+        if (camAutoOpened) { closeCamera(); camAutoOpened = false; }
+        window._camCloseTimer = null;
+      }, 22000);
     }
   } else if (camAutoOpened) {
+    if (window._camCloseTimer) { clearTimeout(window._camCloseTimer); window._camCloseTimer = null; }
     closeCamera();
     camAutoOpened = false;
   }
