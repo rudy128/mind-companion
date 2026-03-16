@@ -500,7 +500,7 @@ void loop() {
         } else {
             LOG_INFO("MAIN", "EMERGENCY CLEARED (single press)");
             sleepEmergency = false;
-            if (audioQuotesIsPlaying()) audioQuotesPause();
+            if (audioQuotesIsPlaying()) audioQuotesStop();
             deepSleepStartTime = 0;
             tftUpdateEmergency(false);
             xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
@@ -756,8 +756,7 @@ static void onClearEmergency()   {
     emergencyFlag  = false;
     sleepEmergency = false;   // clear the sleep-mode flag so speaker loop stops
     // Stop any looping audio that was started by the sleep emergency
-    // (audioQuotesPause kills the driver cleanly without leaving I2S stuck).
-    if (audioQuotesIsPlaying()) audioQuotesPause();
+    if (audioQuotesIsPlaying()) audioQuotesStop();
     deepSleepStartTime = 0;   // allow re-trigger if user goes back to deep sleep
     tftUpdateEmergency(false);
     xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
@@ -787,7 +786,7 @@ static void onMqttCommand(const String& cmd) {
         }
     } else if (cmd == "alarm_off") {
         manualAlarmActive = false;
-        if (!sleepEmergency && audioQuotesIsPlaying()) audioQuotesPause();
+        if (!sleepEmergency && audioQuotesIsPlaying()) audioQuotesStop();
         LOG_INFO("MQTT_CMD", "Manual alarm OFF via dashboard");
     } else if (cmd == "vibrate") {
         onVibrateRequest();

@@ -77,12 +77,22 @@ static void initAudioObject() {
   Serial.println("[AUDIO] Audio object initialized");
 }
 
+// Stop audio without destroying the I2S driver
+void audioQuotesStop() {
+  Serial.println("[AUDIO] Stopping playback...");
+  playRequested = false;
+  if (pAudio != nullptr) {
+    pAudio->stopSong();
+  }
+}
+
 // Pause audio and FULLY release I2S0 for microphone
 void audioQuotesPause() {
   if (audioPaused) return;
   
   Serial.println("[AUDIO] Destroying audio for mic recording...");
   audioPaused = true;
+  playRequested = false; // Clear any pending requests
   
   // Stop playback
   if (pAudio != nullptr) {
@@ -206,7 +216,7 @@ void audioQuotesTestPlay() {
 }
 
 bool audioQuotesIsPlaying() {
-  return pAudio != nullptr && pAudio->isRunning();
+  return playRequested || (pAudio != nullptr && pAudio->isRunning());
 }
 
 bool audioFileExists(const char* filepath) {

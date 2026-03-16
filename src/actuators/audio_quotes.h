@@ -60,6 +60,9 @@ bool playQuoteByCategory(QuoteCategory category);
 // TIME-SLICING — For sharing I2S with microphone
 // ═══════════════════════════════════════════════════════════════
 
+// Stop audio playback immediately (without releasing I2S)
+void audioQuotesStop();
+
 // Pause audio playback and release I2S — call BEFORE mic recording
 void audioQuotesPause();
 
