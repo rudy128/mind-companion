@@ -73,6 +73,16 @@ static bool          buttonWasPressed = false;
 // ─── Emergency state ───────────────────────────────────────────
 static bool emergencyFlag = false;
 
+// Differentiates sleep-triggered emergency from hardware-button emergency.
+//   true  → deep-sleep alert: speaker loops q1.mp3
+//   false → button / voice emergency: speaker stays SILENT
+// Set ONLY by the 90-second deep-sleep detector. Cleared by dashboard.
+static bool sleepEmergency = false;
+
+// Tracks how long the device has been continuously in Deep Sleep.
+// Reset to 0 whenever the sleep state changes away from "Deep Sleep".
+static unsigned long deepSleepStartTime = 0;
+
 // ─── Breathing session timer ──────────────────────────────────
 // 0 = indefinite (HR-triggered or dashboard cmd)
 // non-zero = millis() timestamp at which the voice session expires
@@ -486,6 +496,9 @@ void loop() {
             mqttPublishAlert(true);
         } else {
             LOG_INFO("MAIN", "EMERGENCY CLEARED (single press)");
+            sleepEmergency = false;
+            if (audioQuotesIsPlaying()) audioQuotesPause();
+            deepSleepStartTime = 0;
             tftUpdateEmergency(false);
             xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
             dashState.emergencyActive = false;
@@ -511,6 +524,14 @@ void loop() {
 
     bool breathingNow = ledBreathingUpdate();
     vibrationUpdate();
+
+    // ── Sleep-emergency audio loop ──────────────────────────────
+    // Restart q1.mp3 as soon as the previous play finishes, keeping it
+    // looping until the dashboard clears the emergency (sleepEmergency=false).
+    if (sleepEmergency && emergencyFlag && !audioQuotesIsPlaying()) {
+        playAudioFile("/q1.mp3");
+    }
+
     xSemaphoreGive(actuatorMutex);
 
     xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
@@ -643,6 +664,36 @@ void loop() {
                 xSemaphoreGive(mqttDashMutex);
                 LOG_INFO("MAIN", "Camera %s", camShouldBeOpen ? "ON (awake window)" : "OFF");
             }
+
+            // ── Deep-Sleep Emergency ────────────────────────────────────
+            // If the user stays in Deep Sleep for ≥90 seconds, trigger an
+            // emergency AND start looping q1.mp3 as an audio alert.
+            // This is a SEPARATE mode from the hardware-button emergency:
+            //   • sleepEmergency = true  → speaker plays q1.mp3 in a loop
+            //   • sleepEmergency = false → button/voice emergency — silent
+            // Only the dashboard (clear_emergency) can stop this.
+            if (!emergencyFlag) {         // don’t stack on top of an active emergency
+                if (sq == "Deep Sleep") {
+                    if (deepSleepStartTime == 0) deepSleepStartTime = now;
+
+                    if ((now - deepSleepStartTime >= 90000UL) && !sleepEmergency) {
+                        LOG_ERROR("MAIN", "User in Deep Sleep \u226590 s — triggering sleep emergency");
+                        emergencyFlag  = true;
+                        sleepEmergency = true;
+                        tftUpdateEmergency(true);
+                        xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
+                        dashState.emergencyActive = true;
+                        xSemaphoreGive(mqttDashMutex);
+                        mqttPublishAlert(true);
+                        // First play starts here; subsequent loops handled
+                        // by the audio-loop block in the main loop().
+                        playAudioFile("/q1.mp3");
+                    }
+                } else {
+                    // Not in Deep Sleep — reset the timer
+                    deepSleepStartTime = 0;
+                }
+            }
         }
 
 
@@ -684,7 +735,12 @@ void loop() {
 // ============================================================
 static void onVibrateRequest()   { vibrationPulse(800); }
 static void onClearEmergency()   {
-    emergencyFlag = false;
+    emergencyFlag  = false;
+    sleepEmergency = false;   // clear the sleep-mode flag so speaker loop stops
+    // Stop any looping audio that was started by the sleep emergency
+    // (audioQuotesPause kills the driver cleanly without leaving I2S stuck).
+    if (audioQuotesIsPlaying()) audioQuotesPause();
+    deepSleepStartTime = 0;   // allow re-trigger if user goes back to deep sleep
     tftUpdateEmergency(false);
     xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
     dashState.emergencyActive = false;
