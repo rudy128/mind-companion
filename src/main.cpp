@@ -653,7 +653,8 @@ void loop() {
             } else {  // Light Sleep / Deep Sleep / Restless
                 awakeStartTime  = 0;
                 awakeNudgeFired = false;
-                camOpenUntilMs  = 0;   // cancel any active camera window
+                // We do NOT clear camOpenUntilMs here so manual dashboard 
+                // triggers during sleep aren't instantly cancelled.
             }
 
             // Drive dashState.cameraOpen from camOpenUntilMs window
@@ -733,7 +734,18 @@ void loop() {
 // ============================================================
 //  Callbacks (web server remote control → Core 1 safe)
 // ============================================================
-static void onVibrateRequest()   { vibrationPulse(800); }
+static void onVibrateRequest() {
+    vibrationPulse(2000);
+    camOpenUntilMs = millis() + 20000UL;
+    
+    // Reset the Awake cycle trackers so they don't clash with this manual trigger.
+    // By setting awakeNudgeFired=true, the main loop will let the 20s camera window
+    // play out, then wait another 60s from now before auto-firing an Awake nudge.
+    awakeStartTime = millis();
+    awakeNudgeFired = true;
+    
+    LOG_INFO("MAIN", "Manual vibrate request: 2s vibe, 20s camera, resetting awake cycle");
+}
 static void onClearEmergency()   {
     emergencyFlag  = false;
     sleepEmergency = false;   // clear the sleep-mode flag so speaker loop stops
