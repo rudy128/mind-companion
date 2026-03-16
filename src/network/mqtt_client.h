@@ -35,6 +35,7 @@ struct MqttDashState {
     char   lastVoiceCommand[128];
     bool   breathingActive;
     bool   cameraOpen;
+    bool   micActive;
 };
 
 // ── Lifecycle ────────────────────────────────────────────────

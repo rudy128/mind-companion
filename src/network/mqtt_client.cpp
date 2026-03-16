@@ -122,6 +122,7 @@ static void _publishState() {
     doc["voice"]     = snap.lastVoiceCommand;
     doc["breathing"] = snap.breathingActive;
     doc["camOpen"]   = snap.cameraOpen;
+    doc["mic_active"]= snap.micActive;
     doc["ip"]        = WiFi.localIP().toString();
     doc["heap"]      = esp_get_free_heap_size();
     doc["uptime"]    = millis() / 1000;

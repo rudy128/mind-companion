@@ -79,6 +79,9 @@ static bool emergencyFlag = false;
 // Set ONLY by the 90-second deep-sleep detector. Cleared by dashboard.
 static bool sleepEmergency = false;
 
+// ─── Manual Alarm state ───────────────────────────────────────
+static bool manualAlarmActive = false;
+
 // Tracks how long the device has been continuously in Deep Sleep.
 // Reset to 0 whenever the sleep state changes away from "Deep Sleep".
 static unsigned long deepSleepStartTime = 0;
@@ -525,17 +528,20 @@ void loop() {
     bool breathingNow = ledBreathingUpdate();
     vibrationUpdate();
 
-    // ── Sleep-emergency audio loop ──────────────────────────────
+    // ── Sleep-emergency and Manual alarm audio loop ─────────────
     // Restart q1.mp3 as soon as the previous play finishes, keeping it
-    // looping until the dashboard clears the emergency (sleepEmergency=false).
-    if (sleepEmergency && emergencyFlag && !audioQuotesIsPlaying()) {
-        playAudioFile("/q1.mp3");
+    // looping until cleared.
+    if ((sleepEmergency && emergencyFlag) || manualAlarmActive) {
+        if (!audioQuotesIsPlaying()) {
+            playAudioFile("/q1.mp3");
+        }
     }
 
     xSemaphoreGive(actuatorMutex);
 
     xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
     dashState.breathingActive = breathingNow;
+    dashState.micActive       = speechBusy;
     xSemaphoreGive(mqttDashMutex);
 
     // =========================================================
@@ -772,6 +778,17 @@ static void onMqttCommand(const String& cmd) {
     if (cmd == "breathe") {
         ledBreathingStart();
         breathingEndMs = 0;   // indefinite — dashboard controls stop
+    } else if (cmd == "alarm_on") {
+        if (!emergencyFlag && !speechBusy) {
+            manualAlarmActive = true;
+            LOG_INFO("MQTT_CMD", "Manual alarm ON via dashboard");
+        } else {
+            LOG_WARN("MQTT_CMD", "Ignored alarm_on (emergency or mic active)");
+        }
+    } else if (cmd == "alarm_off") {
+        manualAlarmActive = false;
+        if (!sleepEmergency && audioQuotesIsPlaying()) audioQuotesPause();
+        LOG_INFO("MQTT_CMD", "Manual alarm OFF via dashboard");
     } else if (cmd == "vibrate") {
         onVibrateRequest();
     } else if (cmd == "clear_emergency") {

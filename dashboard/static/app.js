@@ -175,6 +175,21 @@ function updateData(d) {
   // ── Emergency ─────────────────────────────────────────────
   emergency.classList.toggle("hidden", !d.emergency);
 
+  // ── Alarms & Mic State ─────────────────────────────────────
+  const alarmOnBtn = $("alarm-on-btn");
+  const alarmOffBtn = $("alarm-off-btn");
+  if (alarmOnBtn && alarmOffBtn) {
+    const disableAlarms = d.emergency || d.mic_active;
+    alarmOnBtn.disabled = disableAlarms;
+    alarmOffBtn.disabled = disableAlarms;
+    alarmOnBtn.style.opacity = disableAlarms ? "0.5" : "1";
+    alarmOffBtn.style.opacity = disableAlarms ? "0.5" : "1";
+    alarmOnBtn.style.cursor = disableAlarms ? "not-allowed" : "pointer";
+    alarmOffBtn.style.cursor = disableAlarms ? "not-allowed" : "pointer";
+    alarmOnBtn.title = disableAlarms ? "Disabled during emergency or active mic" : "";
+    alarmOffBtn.title = disableAlarms ? "Disabled during emergency or active mic" : "";
+  }
+
   // ── Breathing dot ──────────────────────────────────────────
   $("breathing-dot").classList.toggle("hidden", !d.breathing);
 
