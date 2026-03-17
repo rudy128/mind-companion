@@ -46,6 +46,10 @@ void audioQuotesLoop();
 // Play a specific audio file from LittleFS (e.g., "/q1.mp3")
 bool playAudioFile(const char* filepath);
 
+// Play a file in continuous loop until audioQuotesStop() is called.
+// Idempotent — calling again with the same file is a no-op.
+void playFileLooped(const char* filename);
+
 // Play a quote by looking up text in the AUDIO_QUOTE_MAP hashmap
 // This is the main function to use when TFT shows a quote
 bool playQuoteByHashmap(const char* quoteText);

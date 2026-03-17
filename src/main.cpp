@@ -529,12 +529,10 @@ void loop() {
     vibrationUpdate();
 
     // ── Sleep-emergency and Manual alarm audio loop ─────────────
-    // Restart q1.mp3 as soon as the previous play finishes, keeping it
-    // looping until cleared.
+    // playFileLooped is idempotent — only triggers once, then the audio
+    // system handles continuous replay internally until audioQuotesStop().
     if ((sleepEmergency && emergencyFlag) || manualAlarmActive) {
-        if (!audioQuotesIsPlaying()) {
-            playAudioFile("/q1.mp3");
-        }
+        playFileLooped("/q1.mp3");
     }
 
     xSemaphoreGive(actuatorMutex);
@@ -692,9 +690,7 @@ void loop() {
                         dashState.emergencyActive = true;
                         xSemaphoreGive(mqttDashMutex);
                         mqttPublishAlert(true);
-                        // First play starts here; subsequent loops handled
-                        // by the audio-loop block in the main loop().
-                        playAudioFile("/q1.mp3");
+                        playFileLooped("/q1.mp3");
                     }
                 } else {
                     // Not in Deep Sleep — reset the timer
@@ -786,7 +782,7 @@ static void onMqttCommand(const String& cmd) {
         }
     } else if (cmd == "alarm_off") {
         manualAlarmActive = false;
-        if (!sleepEmergency && audioQuotesIsPlaying()) audioQuotesStop();
+        if (!sleepEmergency) audioQuotesStop();
         LOG_INFO("MQTT_CMD", "Manual alarm OFF via dashboard");
     } else if (cmd == "vibrate") {
         onVibrateRequest();

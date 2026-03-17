@@ -25,6 +25,10 @@ static volatile bool audioPaused = false;
 static volatile bool playRequested = false;
 static char requestedFile[64] = "";
 
+// Loop mode — audio restarts automatically when it finishes
+static volatile bool loopMode = false;
+static char loopFile[64] = "";
+
 // Forward declaration
 static void initAudioObject();
 
@@ -32,10 +36,11 @@ static void initAudioObject();
 void audioTask(void* param) {
   Serial.println("[AUDIO] Task started on Core 0");
   audioTaskRunning = true;
+  bool prevRunning = false;
   
   for (;;) {
-    // If paused (mic is recording), just wait
     if (audioPaused || pAudio == nullptr) {
+      prevRunning = false;
       vTaskDelay(pdMS_TO_TICKS(50));
       continue;
     }
@@ -53,6 +58,16 @@ void audioTask(void* param) {
     // Process audio
     if (pAudio != nullptr) {
       pAudio->loop();
+      
+      bool nowRunning = pAudio->isRunning();
+      // Detect transition: was playing → just stopped
+      if (prevRunning && !nowRunning && loopMode && strlen(loopFile) > 0) {
+        Serial.print("[AUDIO] Looping: ");
+        Serial.println(loopFile);
+        pAudio->connecttoFS(LittleFS, loopFile);
+        nowRunning = true;
+      }
+      prevRunning = nowRunning;
     }
     
     vTaskDelay(1);
@@ -80,6 +95,8 @@ static void initAudioObject() {
 // Stop audio without destroying the I2S driver
 void audioQuotesStop() {
   Serial.println("[AUDIO] Stopping playback...");
+  loopMode = false;
+  loopFile[0] = '\0';
   playRequested = false;
   if (pAudio != nullptr) {
     pAudio->stopSong();
@@ -176,11 +193,37 @@ void playFile(const char* filename) {
     return;
   }
 
+  loopMode = false;
+  loopFile[0] = '\0';
+
   strncpy(requestedFile, filename, sizeof(requestedFile) - 1);
   requestedFile[sizeof(requestedFile) - 1] = '\0';
   playRequested = true;
   
   Serial.print("[AUDIO] Queued: ");
+  Serial.println(filename);
+}
+
+void playFileLooped(const char* filename) {
+  if (loopMode && strcmp(loopFile, filename) == 0) {
+    return;  // already looping this file
+  }
+
+  if(!LittleFS.exists(filename)){
+    Serial.print("File not found: ");
+    Serial.println(filename);
+    return;
+  }
+
+  strncpy(loopFile, filename, sizeof(loopFile) - 1);
+  loopFile[sizeof(loopFile) - 1] = '\0';
+  loopMode = true;
+
+  strncpy(requestedFile, filename, sizeof(requestedFile) - 1);
+  requestedFile[sizeof(requestedFile) - 1] = '\0';
+  playRequested = true;
+
+  Serial.print("[AUDIO] Loop started: ");
   Serial.println(filename);
 }
 
