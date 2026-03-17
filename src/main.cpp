@@ -314,10 +314,6 @@ static void speechTask(void* param) {
         LOG_INFO("SPEECH", "micRecord returned %u bytes", bytesRead);
 
         if (bytesRead > 0) {
-            // Send audio to dashboard for debugging (before OpenAI call)
-            LOG_INFO("SPEECH", "Streaming audio to dashboard...");
-            mqttPublishAudio(audioBuffer, bytesRead);
-            
             LOG_INFO("SPEECH", "Sending to OpenAI Whisper...");
             String transcript = openaiTranscribe(audioBuffer, bytesRead);
             LOG_INFO("SPEECH", "Transcript: \"%s\"", transcript.c_str());

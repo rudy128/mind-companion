@@ -121,12 +121,6 @@ String openaiTranscribe(int16_t* pcmData, size_t pcmBytes) {
     int braceStart = jsonBody.indexOf('{');
     if (braceStart > 0) jsonBody = jsonBody.substring(braceStart);
 
-    // Debug: print JSON body
-    Serial.println("[AI] JSON body: " + jsonBody.substring(0, 300));
-    
-    // Publish raw response to MQTT for dashboard debugging
-    mqttPublishAIResponse(jsonBody.c_str());
-
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, jsonBody);
     if (err) {

@@ -9,7 +9,6 @@
 // blocking socket reads never stall the sensor loop on Core 1.
 //
 // Publish:  mind/data   — sensor telemetry JSON  (1 Hz)
-//           mind/logs   — log entries
 //           mind/alert  — emergency flag changes
 // Subscribe: mind/cmd   — dashboard commands (JSON {cmd:"..."})
 // =============================================================
@@ -49,17 +48,8 @@ void mqttInit(MqttDashState* state);
 // Force-publish the current state immediately
 void mqttPublishState();
 
-// Publish a log line to mind/logs
-void mqttPublishLog(const char* level, const char* tag, const char* msg);
-
 // Publish emergency alert change to mind/alert
 void mqttPublishAlert(bool active);
-
-// Publish recorded audio as base64 WAV to mind/audio (for debugging)
-void mqttPublishAudio(int16_t* pcmData, size_t pcmBytes);
-
-// Publish raw OpenAI response to mind/ai_response (for debugging)
-void mqttPublishAIResponse(const char* rawResponse);
 
 // ── Command callback registration ───────────────────────────
 // Commands received on mind/cmd are JSON: {"cmd":"breathe"}, {"cmd":"alarm_on"}, etc.

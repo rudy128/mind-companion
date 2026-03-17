@@ -24,7 +24,6 @@
 #define MQTT_CLIENT_ID     "mind-companion"
 // Topics — publish
 #define MQTT_TOPIC_DATA    "mind/data"       // sensor telemetry JSON (1 Hz)
-#define MQTT_TOPIC_LOGS    "mind/logs"       // log messages
 #define MQTT_TOPIC_ALERT   "mind/alert"      // emergency events
 // Topics — subscribe
 #define MQTT_TOPIC_CMD     "mind/cmd"        // commands from dashboard
@@ -114,7 +113,7 @@
 #define MOVEMENT_THRESHOLD       0.2f   // g-force delta for "movement detected"
 #define SLEEP_MOVEMENT_DEEP      0.3f   // below this = deep sleep
 #define SLEEP_MOVEMENT_LIGHT     0.8f   // below this = light sleep; above = restless
-#define HR_ABNORMAL_HIGH         120    // BPM above this triggers breathing LED
+#define HR_ABNORMAL_HIGH         150    // BPM above this triggers breathing LED
 #define HR_ABNORMAL_LOW          50     // BPM below this triggers breathing LED
 #define NO_MOVEMENT_EMERGENCY_MS 40000  // 40 seconds → speaker alarm
 //#define GSR_HIGH_THRESHOLD       24000.0f

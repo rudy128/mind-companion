@@ -23,18 +23,13 @@ MQTT_PORT   = 1883              # raw MQTT (paho speaks MQTT, not WebSocket)
 FLASK_PORT  = 3000
 
 TOPICS = {
-    "data":        "mind/data",
-    "logs":        "mind/logs",
-    "alert":       "mind/alert",
-    "audio":       "mind/audio",
-    "ai_response": "mind/ai_response",
+    "data":  "mind/data",
+    "alert": "mind/alert",
 }
 
 # ── Shared state ──────────────────────────────────────────────
 app           = Flask(__name__)
 latest_state  = {}               # last known sensor payload
-log_buffer    = []               # rolling 200-entry log
-MAX_LOGS      = 200
 
 # Each connected SSE client gets a queue; we fan-out messages to all.
 client_queues: list[queue.Queue] = []
@@ -85,26 +80,6 @@ def on_message(client, userdata, msg):
             _broadcast("alert", payload)
         except json.JSONDecodeError:
             pass
-
-    # ── mind/logs ────────────────────────────────────────────
-    elif topic == TOPICS["logs"]:
-        try:
-            entry = json.loads(payload)
-            log_buffer.insert(0, entry)
-            if len(log_buffer) > MAX_LOGS:
-                log_buffer.pop()
-            _broadcast("log", payload)
-        except json.JSONDecodeError:
-            pass
-
-    # ── mind/audio ───────────────────────────────────────────
-    elif topic == TOPICS["audio"]:
-        # raw base64 — pass straight through
-        _broadcast("audio", payload)
-
-    # ── mind/ai_response ─────────────────────────────────────
-    elif topic == TOPICS["ai_response"]:
-        _broadcast("ai_response", payload)
 
 # ── MQTT client setup ─────────────────────────────────────────
 def start_mqtt():
@@ -188,11 +163,6 @@ def send_command():
         mqtt_client.publish("mind/cmd", payload, qos=0)
         return jsonify({"ok": True})
     return jsonify({"error": "MQTT not connected"}), 503
-
-
-@app.route("/logs")
-def get_logs():
-    return jsonify(log_buffer)
 
 
 @app.route("/state")
