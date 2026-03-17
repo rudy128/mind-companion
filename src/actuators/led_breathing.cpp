@@ -1,14 +1,9 @@
 // =============================================================
-// LED Breathing Pattern — Non-blocking linear fade (PNP inverted)
+// LED Breathing Pattern — Time-based smooth fade (PNP inverted)
 //
-// Pure repeating worker — NO timer logic. Orchestration (main.cpp) calls
-// ledBreathingStop() when the session should end.
-//
-// Fade-in  : linear duty 255→0  (keeps the nice feel the user confirmed)
-// Fade-out : gamma-corrected (γ=2) so the LED completes cleanly instead
-//            of lingering at near-zero brightness for the last ~50 steps
-// Pause    : 400 ms between cycles
-// Cycle    : ≈ 2.95 s total
+// Uses elapsed-time interpolation instead of discrete steps.
+// Full cycle: 500 ms fade-in + 500 ms fade-out + 150 ms rest = ~1.15 s
+// Zero dwell at peak brightness — reversal is instant.
 // =============================================================
 #include "led_breathing.h"
 #include "../config.h"
@@ -18,56 +13,46 @@ static const int CHANNEL = 0;
 static const int FREQ    = 5000;
 static const int RES     = 8;
 
-// ── Timing — ~3 s per full cycle ─────────────────────────────
-//   Fade in : 255 steps × 5 ms = 1.275 s
-//   Fade out: 255 steps × 5 ms = 1.275 s  (gamma-corrected write)
-//   Pause   : 0.4 s
-static const unsigned long STEP_MS  = 5;    // ms per duty step
-static const unsigned long PAUSE_MS = 400;  // ms pause at end of each cycle
+// ── Timing ────────────────────────────────────────────────────
+static const unsigned long FADE_IN_MS  = 500;   // dark → full bright
+static const unsigned long FADE_OUT_MS = 500;   // full bright → dark
+static const unsigned long PAUSE_MS    = 150;   // rest between cycles (LED off)
 
-// ── State machine ─────────────────────────────────────────────
+// ── State: 0 = fade-in, 1 = fade-out, 2 = pause ─────────────
 static bool          _active       = false;
-static bool          _fadingIn     = true;   // true  = duty 255→0 (brighten)
-                                             // false = duty 0→255 (dim)
-static bool          _pausing      = false;
-static bool          _stopping     = false;  // graceful-stop requested
-static int           _duty         = 255;    // PNP: 255 = off (start dark)
-static unsigned long _lastStepMs   = 0;
-static unsigned long _pauseStartMs = 0;
+static bool          _stopping     = false;
+static uint8_t       _phase        = 0;
+static unsigned long _phaseStartMs = 0;
 
 // ── Public API ────────────────────────────────────────────────
 
 void ledBreathingInit() {
     ledcSetup(CHANNEL, FREQ, RES);
     ledcAttachPin(LED_PIN, CHANNEL);
-    ledcWrite(CHANNEL, 255);   // LED off on boot
+    ledcWrite(CHANNEL, 255);   // PNP: 255 = LED off
 }
 
 void ledBreathingStart() {
-    _active      = true;
-    _fadingIn    = true;
-    _stopping    = false;
-    _duty        = 255;        // begin from LED-off
-    _pausing     = false;
-    _lastStepMs  = millis();
+    _active       = true;
+    _stopping     = false;
+    _phase        = 0;         // start with fade-in
+    _phaseStartMs = millis();
 }
 
 void ledBreathingStop() {
     _active   = false;
     _stopping = false;
-    ledcWrite(CHANNEL, 255);   // LED off (PNP: 255 = off)
+    ledcWrite(CHANNEL, 255);
 }
 
 void ledBreathingGracefulStop() {
     if (!_active) return;
     _stopping = true;
-    // If sitting in the inter-cycle pause the LED is already dark — just finish.
-    if (_pausing) {
+    if (_phase == 2) {
         _active   = false;
         _stopping = false;
         ledcWrite(CHANNEL, 255);
     }
-    // Otherwise update() will handle the wind-down.
 }
 
 bool ledBreathingIsActive() { return _active; }
@@ -75,63 +60,61 @@ bool ledBreathingIsActive() { return _active; }
 bool ledBreathingUpdate() {
     if (!_active) return false;
 
-    unsigned long now = millis();
+    unsigned long now     = millis();
+    unsigned long elapsed = now - _phaseStartMs;
 
-    // ── Pause between cycles ─────────────────────────────────
-    if (_pausing) {
+    // ── Graceful stop mid fade-in: jump into fade-out at matching brightness
+    if (_stopping && _phase == 0) {
+        float t_in   = constrain((float)elapsed / FADE_IN_MS, 0.0f, 1.0f);
+        // Current PNP duty: 255 at t=0 (off), 0 at t=1 (full on)
+        uint8_t curDuty = (uint8_t)(255.0f * (1.0f - t_in) + 0.5f);
+        // Pre-wind fade-out timer so it starts from the same brightness
+        float t_out  = (float)curDuty / 255.0f;   // 0 = full on, 1 = off
+        _phase        = 1;
+        _phaseStartMs = now - (unsigned long)(t_out * FADE_OUT_MS);
+        elapsed       = now - _phaseStartMs;
+    }
+
+    if (_phase == 0) {
+        // ── Fade in: PNP duty 255 → 0 (off → full bright) ────────
+        float t = constrain((float)elapsed / FADE_IN_MS, 0.0f, 1.0f);
+        uint8_t duty = (uint8_t)(255.0f * (1.0f - t) + 0.5f);
+        ledcWrite(CHANNEL, duty);
+
+        if (t >= 1.0f) {
+            _phase        = 1;
+            _phaseStartMs = now;
+        }
+    }
+    else if (_phase == 1) {
+        // ── Fade out: PNP duty 0 → 255 (full bright → off) ──────
+        float t = constrain((float)elapsed / FADE_OUT_MS, 0.0f, 1.0f);
+        uint8_t duty = (uint8_t)(255.0f * t + 0.5f);
+        ledcWrite(CHANNEL, duty);
+
+        if (t >= 1.0f) {
+            ledcWrite(CHANNEL, 255);   // ensure fully off
+            if (_stopping) {
+                _active   = false;
+                _stopping = false;
+                return false;
+            }
+            _phase        = 2;
+            _phaseStartMs = now;
+        }
+    }
+    else {
+        // ── Pause: LED is off, short rest between breaths ────────
         if (_stopping) {
-            // Graceful stop: LED is already off during pause — done.
             _active   = false;
             _stopping = false;
             ledcWrite(CHANNEL, 255);
             return false;
         }
-        if (now - _pauseStartMs >= PAUSE_MS) {
-            _pausing  = false;
-            _fadingIn = true;
-            _duty     = 255;    // restart from LED-off
+        if (elapsed >= PAUSE_MS) {
+            _phase        = 0;
+            _phaseStartMs = now;
         }
-        return true;
-    }
-
-    // If graceful-stop requested mid fade-in, reverse to fade-out immediately
-    if (_stopping && _fadingIn) {
-        _fadingIn = false;
-    }
-
-    // ── Rate-limit to STEP_MS ────────────────────────────────
-    if (now - _lastStepMs < STEP_MS) return true;
-    _lastStepMs = now;
-
-    if (_fadingIn) {
-        // ── Fade in: linear (user confirmed this feels right) ──
-        // duty 255 → 0: PNP decreasing duty = brighter
-        _duty--;
-        if (_duty <= 0) {
-            _duty     = 0;
-            _fadingIn = false;
-        }
-        ledcWrite(CHANNEL, _duty);
-
-    } else {
-        // ── Fade out: gamma-corrected (γ=2) ───────────────────
-        _duty++;
-        if (_duty >= 255) {
-            _duty = 255;
-            if (_stopping) {
-                // Graceful stop complete — LED fully off, we're done.
-                _active   = false;
-                _stopping = false;
-                ledcWrite(CHANNEL, 255);
-                return false;
-            }
-            _pausing       = true;
-            _pauseStartMs  = now;
-        }
-        float    on  = (255.0f - _duty) / 255.0f;
-        on           = on * on;   // γ = 2
-        uint8_t  pwm = (uint8_t)((1.0f - on) * 255.0f + 0.5f);
-        ledcWrite(CHANNEL, pwm);
     }
 
     return true;
