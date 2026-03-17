@@ -5,11 +5,16 @@
  */
 
 // ── State ──────────────────────────────────────────────────────
-const MAX_HR_HISTORY = 60;
+const MAX_HISTORY = 60;
 
-let hrHistory    = [];
-let connected    = false;
-let camAutoOpened = false;  // true when camera was opened by firmware (not user)
+let hrHistory     = [];
+let sleepHistory  = [];
+let stressHistory = [];
+let connected     = false;
+let camAutoOpened = false;
+
+const SLEEP_MAP  = { "Deep Sleep": 0, "Light Sleep": 1, "Awake": 2 };
+const STRESS_MAP = { "Low": 0, "Moderate": 1, "High": 2 };
 
 // ── DOM refs ───────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -21,84 +26,273 @@ const waitData    = $("wait-data");
 const sensorGrid  = $("sensor-grid");
 const emergency   = $("emergency-banner");
 
-// ── HR chart (plain Canvas — full width section) ──────────────
-const hrCanvas = $("hr-chart");
-const hrCtx    = hrCanvas.getContext("2d");
-const hrGraphSection = $("hr-graph-section");
+// ── Generic Axis Chart Renderer ─────────────────────────────────
+function drawAxisChart(canvas, data, config) {
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const w   = canvas.offsetWidth || 600;
+  const h   = config.height || 140;
 
-function drawHrChart() {
-  const w = hrCanvas.offsetWidth || 600;
-  const h = 140;
-  hrCanvas.width  = w * (window.devicePixelRatio || 1);
-  hrCanvas.height = h * (window.devicePixelRatio || 1);
-  hrCtx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+  canvas.width  = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.height = h + "px";
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
 
-  hrCtx.clearRect(0, 0, w, h);
-  if (hrHistory.length < 2) return;
+  const left   = config.leftPad || 52;
+  const right  = 16;
+  const top    = 14;
+  const bottom = 24;
+  const plotW  = w - left - right;
+  const plotH  = h - top - bottom;
 
-  const vals  = hrHistory.filter(v => v > 0);
-  if (vals.length === 0) return;
+  const color   = config.color;
+  const yLabels = config.yLabels;
+  const yMin    = config.yMin;
+  const yMax    = config.yMax;
+  const yRange  = yMax - yMin || 1;
 
-  const min = Math.max(0, Math.min(...vals) - 10);
-  const max = Math.max(...vals) + 10;
-  const range = max - min || 1;
+  const toY = v => top + plotH - ((v - yMin) / yRange) * plotH;
+  const toX = i => left + (data.length > 1 ? (i / (data.length - 1)) * plotW : 0);
 
-  const isAbnormal = vals.some(v => v > 120 || v < 50);
-  const color = isAbnormal ? "#f87171" : "#4ade80";
+  // Grid lines + Y-axis labels
+  ctx.font = "10px 'JetBrains Mono', monospace";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
 
-  const padY = 12;
-  const pts = hrHistory.map((v, i) => ({
-    x: (i / (hrHistory.length - 1)) * w,
-    y: v > 0 ? (h - padY) - ((v - min) / range) * (h - padY * 2) : null,
+  for (const yl of yLabels) {
+    const y = toY(yl.value);
+    ctx.strokeStyle = "rgba(255,255,255,0.05)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(left, y);
+    ctx.lineTo(w - right, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(161,161,170,0.7)";
+    ctx.fillText(yl.label, left - 8, y);
+  }
+
+  // Axes
+  ctx.strokeStyle = "rgba(255,255,255,0.2)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(left, top);
+  ctx.lineTo(left, h - bottom);
+  ctx.lineTo(w - right, h - bottom);
+  ctx.stroke();
+
+  // X-axis ticks (every 10 samples)
+  ctx.font = "9px 'JetBrains Mono', monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.fillStyle = "rgba(161,161,170,0.5)";
+  if (data.length > 1) {
+    const step = Math.max(10, Math.ceil(data.length / 6));
+    for (let i = 0; i < data.length; i += step) {
+      const x = toX(i);
+      ctx.beginPath();
+      ctx.moveTo(x, h - bottom);
+      ctx.lineTo(x, h - bottom + 4);
+      ctx.strokeStyle = "rgba(255,255,255,0.15)";
+      ctx.stroke();
+      ctx.fillText(`${i}s`, x, h - bottom + 5);
+    }
+  }
+
+  if (data.length === 0) return;
+
+  const validData = data.filter(v => v !== null);
+  if (validData.length === 0) return;
+
+  const pts = data.map((v, i) => ({
+    x: toX(i),
+    y: v !== null ? toY(v) : null,
   }));
 
-  // Fill gradient
-  const grad = hrCtx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, color + "33");
-  grad.addColorStop(1, color + "03");
+  const grad = ctx.createLinearGradient(0, top, 0, h - bottom);
+  grad.addColorStop(0, color + "30");
+  grad.addColorStop(1, color + "05");
 
-  hrCtx.beginPath();
-  let first = true;
-  for (const p of pts) {
-    if (p.y === null) { first = true; continue; }
-    first ? hrCtx.moveTo(p.x, p.y) : hrCtx.lineTo(p.x, p.y);
-    first = false;
-  }
-  const lastValid  = [...pts].reverse().find(p => p.y !== null);
-  const firstValid = pts.find(p => p.y !== null);
-  if (lastValid && firstValid) {
-    hrCtx.lineTo(lastValid.x, h);
-    hrCtx.lineTo(firstValid.x, h);
-    hrCtx.closePath();
-    hrCtx.fillStyle = grad;
-    hrCtx.fill();
-  }
+  if (config.stepped) {
+    // Stepped line for categorical data
+    let started = false;
+    let firstX = 0, lastX = 0, lastPY = 0;
 
-  // Stroke line
-  hrCtx.beginPath();
-  first = true;
-  for (const p of pts) {
-    if (p.y === null) { first = true; continue; }
-    first ? hrCtx.moveTo(p.x, p.y) : hrCtx.lineTo(p.x, p.y);
-    first = false;
-  }
-  hrCtx.strokeStyle = color;
-  hrCtx.lineWidth   = 2;
-  hrCtx.lineJoin    = "round";
-  hrCtx.lineCap     = "round";
-  hrCtx.stroke();
+    // Fill
+    ctx.beginPath();
+    for (let i = 0; i < pts.length; i++) {
+      if (pts[i].y === null) continue;
+      if (!started) {
+        ctx.moveTo(pts[i].x, pts[i].y);
+        firstX = pts[i].x;
+        started = true;
+      } else {
+        ctx.lineTo(pts[i].x, lastPY);
+        ctx.lineTo(pts[i].x, pts[i].y);
+      }
+      lastX = pts[i].x;
+      lastPY = pts[i].y;
+    }
+    if (started) {
+      ctx.lineTo(lastX, h - bottom);
+      ctx.lineTo(firstX, h - bottom);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
 
-  // Draw dots on each data point
-  for (const p of pts) {
-    if (p.y === null) continue;
-    hrCtx.beginPath();
-    hrCtx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
-    hrCtx.fillStyle = color;
-    hrCtx.fill();
+    // Stroke
+    ctx.beginPath();
+    started = false;
+    for (let i = 0; i < pts.length; i++) {
+      if (pts[i].y === null) continue;
+      if (!started) {
+        ctx.moveTo(pts[i].x, pts[i].y);
+        started = true;
+      } else {
+        ctx.lineTo(pts[i].x, lastPY);
+        ctx.lineTo(pts[i].x, pts[i].y);
+      }
+      lastPY = pts[i].y;
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = "round";
+    ctx.stroke();
+
+    // Dots at each data point
+    for (const p of pts) {
+      if (p.y === null) continue;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
+  } else {
+    // Smooth line for numeric data
+
+    // Fill
+    ctx.beginPath();
+    let first = true;
+    for (const p of pts) {
+      if (p.y === null) { first = true; continue; }
+      first ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
+      first = false;
+    }
+    const lastValid  = [...pts].reverse().find(p => p.y !== null);
+    const firstValid = pts.find(p => p.y !== null);
+    if (lastValid && firstValid) {
+      ctx.lineTo(lastValid.x, h - bottom);
+      ctx.lineTo(firstValid.x, h - bottom);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    // Stroke
+    ctx.beginPath();
+    first = true;
+    for (const p of pts) {
+      if (p.y === null) { first = true; continue; }
+      first ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
+      first = false;
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = "round";
+    ctx.lineCap  = "round";
+    ctx.stroke();
+
+    // Dots
+    for (const p of pts) {
+      if (p.y === null) continue;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
   }
 }
 
-window.addEventListener("resize", drawHrChart);
+// ── Chart draw wrappers ─────────────────────────────────────────
+
+function drawHrChart() {
+  const vals = hrHistory.filter(v => v > 0);
+  let yMin, yMax, labels;
+
+  if (vals.length > 0) {
+    yMin = Math.max(0, Math.min(...vals) - 10);
+    yMax = Math.max(...vals) + 10;
+    const mid = Math.round((yMin + yMax) / 2);
+    labels = [
+      { value: Math.round(yMin), label: `${Math.round(yMin)}` },
+      { value: mid,              label: `${mid}` },
+      { value: Math.round(yMax), label: `${Math.round(yMax)}` },
+    ];
+  } else {
+    yMin = 40; yMax = 160;
+    labels = [
+      { value: 40,  label: "40" },
+      { value: 80,  label: "80" },
+      { value: 120, label: "120" },
+      { value: 160, label: "160" },
+    ];
+  }
+
+  const isAbnormal = vals.some(v => v > 120 || v < 50);
+  drawAxisChart($("hr-chart"), hrHistory, {
+    height:  150,
+    color:   isAbnormal ? "#f87171" : "#4ade80",
+    yMin,
+    yMax,
+    yLabels: labels,
+    stepped: false,
+    leftPad: 48,
+  });
+}
+
+function drawSleepChart() {
+  drawAxisChart($("sleep-chart"), sleepHistory, {
+    height:  130,
+    color:   "#60a5fa",
+    yMin:    -0.3,
+    yMax:    2.3,
+    yLabels: [
+      { value: 0, label: "Deep" },
+      { value: 1, label: "Light" },
+      { value: 2, label: "Awake" },
+    ],
+    stepped: true,
+    leftPad: 52,
+  });
+}
+
+function drawStressChart() {
+  drawAxisChart($("stress-chart"), stressHistory, {
+    height:  130,
+    color:   "#facc15",
+    yMin:    -0.3,
+    yMax:    2.3,
+    yLabels: [
+      { value: 0, label: "Low" },
+      { value: 1, label: "Mid" },
+      { value: 2, label: "High" },
+    ],
+    stepped: true,
+    leftPad: 52,
+  });
+}
+
+function redrawAllCharts() {
+  drawHrChart();
+  drawSleepChart();
+  drawStressChart();
+}
+
+window.addEventListener("resize", redrawAllCharts);
 
 // ── Connection state UI ────────────────────────────────────────
 function setConnectionState(state) {
@@ -114,7 +308,6 @@ function setConnectionState(state) {
 
 // ── Update sensor panels ───────────────────────────────────────
 function updateData(d) {
-  // Show grid, hide waiting cards
   waitConn.classList.add("hidden");
   waitData.classList.add("hidden");
   sensorGrid.classList.remove("hidden");
@@ -135,16 +328,14 @@ function updateData(d) {
     ? "var(--red)"
     : d.finger ? "var(--green)" : "var(--fg-muted)";
 
-  // Full-width graph — visible only when finger is on the sensor
-  if (d.finger) {
-    hrGraphSection.classList.remove("hidden");
-    const hrVal = displayBpm ? d.bpm : 0;
-    hrHistory.push(hrVal);
-    if (hrHistory.length > MAX_HR_HISTORY) hrHistory.shift();
-    drawHrChart();
-  } else {
-    hrGraphSection.classList.add("hidden");
-  }
+  // Finger badge on graph
+  $("finger-badge").classList.toggle("hidden", !d.finger);
+
+  // Record HR (push 0 when no finger so graph shows gap as null)
+  const hrVal = displayBpm ? d.bpm : null;
+  hrHistory.push(hrVal);
+  if (hrHistory.length > MAX_HISTORY) hrHistory.shift();
+  drawHrChart();
 
   // ── Stress ─────────────────────────────────────────────────
   const stressEl = $("stress-level");
@@ -158,6 +349,13 @@ function updateData(d) {
   $("gsr-value").textContent = d.gsr != null
     ? `${Number(d.gsr).toFixed(1)} µS`
     : "-- µS";
+
+  // Record stress (only Low/Moderate/High)
+  if (d.stress in STRESS_MAP) {
+    stressHistory.push(STRESS_MAP[d.stress]);
+    if (stressHistory.length > MAX_HISTORY) stressHistory.shift();
+    drawStressChart();
+  }
 
   // ── Sleep ──────────────────────────────────────────────────
   const sleepDescriptions = {
@@ -176,6 +374,13 @@ function updateData(d) {
     "Restless":    "sleep-restless",
     "Awake":       "sleep-awake",
   }[d.sleep] ?? "badge-outline");
+
+  // Record sleep (only Deep/Light/Awake)
+  if (d.sleep in SLEEP_MAP) {
+    sleepHistory.push(SLEEP_MAP[d.sleep]);
+    if (sleepHistory.length > MAX_HISTORY) sleepHistory.shift();
+    drawSleepChart();
+  }
 
   // ── IMU ────────────────────────────────────────────────────
   $("ax-val").textContent  = d.ax != null ? `${Number(d.ax).toFixed(3)}g` : "--";
@@ -218,16 +423,11 @@ function updateData(d) {
 
   $("voice-val").textContent = d.voice || "—";
 
-  // ── Camera: auto-open when firmware signals, auto-close when signal ends ──
-  // Two-layer close guarantee:
-  //   1. Strict SSE check: d.camOpen === true, so undefined/false both trigger close path.
-  //   2. Backup setTimeout: if SSE camOpen=false packet is ever lost, the timer closes
-  //      the stream at 22s regardless (firmware window is 20s).
+  // ── Camera auto-open/close ─────────────────────────────────
   if (d.camOpen === true) {
     if ($("cam-open").classList.contains("hidden")) {
       openCamera($("esp-ip").value || d.ip);
       camAutoOpened = true;
-      // Backup timer — clear any previous one first
       if (window._camCloseTimer) clearTimeout(window._camCloseTimer);
       window._camCloseTimer = setTimeout(() => {
         if (camAutoOpened) { closeCamera(); camAutoOpened = false; }
@@ -260,9 +460,6 @@ function formatUptime(secs) {
 }
 
 // ── Camera ─────────────────────────────────────────────────────
-// IMPORTANT: never use outerHTML to replace #cam-img — that destroys
-// the element and breaks all subsequent open/close calls until page refresh.
-// Instead, show a sibling error overlay and keep the <img> in place.
 function openCamera(ip) {
   const espIp = ip || $("esp-ip").value;
   const url   = `http://${espIp}:81/stream`;
@@ -270,7 +467,6 @@ function openCamera(ip) {
   const img = $("cam-img");
   const err = $("cam-error");
 
-  // Reset any previous error state
   if (err)  err.classList.add("hidden");
   img.style.display = "block";
   img.src = url;
@@ -328,7 +524,6 @@ function connectSSE() {
     connected = true;
     setConnectionState("connected");
     console.log("[SSE] Connected");
-    // Show 'waiting for data' if no grid yet
     if (sensorGrid.classList.contains("hidden")) {
       waitConn.classList.add("hidden");
       waitData.classList.remove("hidden");
@@ -356,3 +551,4 @@ function connectSSE() {
 
 // ── Boot ───────────────────────────────────────────────────────
 connectSSE();
+redrawAllCharts();
