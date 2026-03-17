@@ -30,6 +30,7 @@ static bool          _active       = false;
 static bool          _fadingIn     = true;   // true  = duty 255→0 (brighten)
                                              // false = duty 0→255 (dim)
 static bool          _pausing      = false;
+static bool          _stopping     = false;  // graceful-stop requested
 static int           _duty         = 255;    // PNP: 255 = off (start dark)
 static unsigned long _lastStepMs   = 0;
 static unsigned long _pauseStartMs = 0;
@@ -45,14 +46,28 @@ void ledBreathingInit() {
 void ledBreathingStart() {
     _active      = true;
     _fadingIn    = true;
+    _stopping    = false;
     _duty        = 255;        // begin from LED-off
     _pausing     = false;
     _lastStepMs  = millis();
 }
 
 void ledBreathingStop() {
-    _active = false;
+    _active   = false;
+    _stopping = false;
     ledcWrite(CHANNEL, 255);   // LED off (PNP: 255 = off)
+}
+
+void ledBreathingGracefulStop() {
+    if (!_active) return;
+    _stopping = true;
+    // If sitting in the inter-cycle pause the LED is already dark — just finish.
+    if (_pausing) {
+        _active   = false;
+        _stopping = false;
+        ledcWrite(CHANNEL, 255);
+    }
+    // Otherwise update() will handle the wind-down.
 }
 
 bool ledBreathingIsActive() { return _active; }
@@ -64,12 +79,24 @@ bool ledBreathingUpdate() {
 
     // ── Pause between cycles ─────────────────────────────────
     if (_pausing) {
+        if (_stopping) {
+            // Graceful stop: LED is already off during pause — done.
+            _active   = false;
+            _stopping = false;
+            ledcWrite(CHANNEL, 255);
+            return false;
+        }
         if (now - _pauseStartMs >= PAUSE_MS) {
             _pausing  = false;
             _fadingIn = true;
             _duty     = 255;    // restart from LED-off
         }
         return true;
+    }
+
+    // If graceful-stop requested mid fade-in, reverse to fade-out immediately
+    if (_stopping && _fadingIn) {
+        _fadingIn = false;
     }
 
     // ── Rate-limit to STEP_MS ────────────────────────────────
@@ -88,21 +115,16 @@ bool ledBreathingUpdate() {
 
     } else {
         // ── Fade out: gamma-corrected (γ=2) ───────────────────
-        // Without gamma, human eyes linger on the near-off range
-        // (duty 200-255 = only 0-22% on-time) and the LED appears
-        // to "hang" before going off. γ=2 compresses that tail.
-        //
-        //   on_ratio = (255-_duty)/255  →  1..0  as _duty goes 0→255
-        //   gamma    = on_ratio²        →  pushes dim tail toward 0 faster
-        //   pwm_out  = (1-gamma)*255    →  back to PNP duty
-        //
-        //   _duty=  0 → pwm=  0  (full on, unchanged)
-        //   _duty=128 → pwm=192  (dim — 128 without gamma)
-        //   _duty=192 → pwm=239  (perceptually off at 75% through counter)
-        //   _duty=255 → pwm=255  (definitively off)
         _duty++;
         if (_duty >= 255) {
-            _duty          = 255;
+            _duty = 255;
+            if (_stopping) {
+                // Graceful stop complete — LED fully off, we're done.
+                _active   = false;
+                _stopping = false;
+                ledcWrite(CHANNEL, 255);
+                return false;
+            }
             _pausing       = true;
             _pauseStartMs  = now;
         }

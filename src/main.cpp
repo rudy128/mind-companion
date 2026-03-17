@@ -512,13 +512,14 @@ void loop() {
     // ── Non-blocking actuator state machines ─────────────────
     xSemaphoreTake(actuatorMutex, portMAX_DELAY);
 
-    // Orchestration timer: stop a voice-triggered breathing session once expired.
+    // Orchestration timer: gracefully stop a timed breathing session once expired.
+    // The LED finishes its current fade-out cycle then turns off — no abrupt cut.
     // HR-triggered sessions have breathingEndMs == 0 and are stopped by the
     // 1-second HR normalisation check further below.
     if (breathingEndMs > 0 && millis() >= breathingEndMs && ledBreathingIsActive()) {
-        ledBreathingStop();
+        ledBreathingGracefulStop();
         breathingEndMs = 0;
-        LOG_INFO("MAIN", "Voice breathing session ended");
+        LOG_INFO("MAIN", "Breathing session ending (graceful fade-out)");
     }
 
     bool breathingNow = ledBreathingUpdate();
@@ -768,7 +769,8 @@ static void onMqttCommand(const String& cmd) {
     xSemaphoreTake(actuatorMutex, portMAX_DELAY);
     if (cmd == "breathe") {
         ledBreathingStart();
-        breathingEndMs = 0;   // indefinite — dashboard controls stop
+        breathingEndMs = millis() + 35000UL;
+        LOG_INFO("MQTT_CMD", "Breathing LED started — 35 s session");
     } else if (cmd == "alarm_on") {
         if (!speechBusy) {
             // Stop any active audio (e.g. sleep-emergency loop) so we
