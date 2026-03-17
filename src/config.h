@@ -136,13 +136,13 @@
 static std::map<std::string, std::string> AUDIO_QUOTE_MAP = {
     // CALM quotes
     {"Take a deep breath", "/q1.mp3"},
-    {"This feeling will pass", "/q1.mp3"},
-    {"Slow down, you got this", "/q1.mp3"},
+    {"This feeling will pass", "/q2.mp3"},
+    {"Slow down, you got this", "/q3.mp3"},
     
     // MOTIVATE quotes
-    {"You are stronger than you think", "/q1.mp3"},
-    {"One step at a time", "/q1.mp3"},
-    {"It's okay to ask for help", "/q1.mp3"}
+    {"You are stronger than you think", "/q6.mp3"},
+    {"One step at a time", "/q4.mp3"},
+    {"It's okay to ask for help", "/q5.mp3"}
 };
 
 #endif // CONFIG_H
