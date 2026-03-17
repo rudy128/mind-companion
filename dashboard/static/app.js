@@ -5,14 +5,9 @@
  */
 
 // ── State ──────────────────────────────────────────────────────
-const MAX_HR_HISTORY = 50;
-const MAX_LOGS       = 200;
+const MAX_HR_HISTORY = 60;
 
 let hrHistory    = [];
-let allLogs      = [];
-let logFilter    = "ALL";
-let audioBlob    = null;
-let audioUrl     = null;
 let connected    = false;
 let camAutoOpened = false;  // true when camera was opened by firmware (not user)
 
@@ -26,15 +21,17 @@ const waitData    = $("wait-data");
 const sensorGrid  = $("sensor-grid");
 const emergency   = $("emergency-banner");
 
-// ── HR chart (plain Canvas) ────────────────────────────────────
+// ── HR chart (plain Canvas — full width section) ──────────────
 const hrCanvas = $("hr-chart");
 const hrCtx    = hrCanvas.getContext("2d");
+const hrGraphSection = $("hr-graph-section");
 
 function drawHrChart() {
-  const w = hrCanvas.offsetWidth || 280;
-  const h = 72;
-  hrCanvas.width  = w;
-  hrCanvas.height = h;
+  const w = hrCanvas.offsetWidth || 600;
+  const h = 140;
+  hrCanvas.width  = w * (window.devicePixelRatio || 1);
+  hrCanvas.height = h * (window.devicePixelRatio || 1);
+  hrCtx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
 
   hrCtx.clearRect(0, 0, w, h);
   if (hrHistory.length < 2) return;
@@ -42,22 +39,23 @@ function drawHrChart() {
   const vals  = hrHistory.filter(v => v > 0);
   if (vals.length === 0) return;
 
-  const min = Math.max(0, Math.min(...vals) - 5);
-  const max = Math.max(...vals) + 5;
+  const min = Math.max(0, Math.min(...vals) - 10);
+  const max = Math.max(...vals) + 10;
   const range = max - min || 1;
 
   const isAbnormal = vals.some(v => v > 120 || v < 50);
   const color = isAbnormal ? "#f87171" : "#4ade80";
 
+  const padY = 12;
   const pts = hrHistory.map((v, i) => ({
     x: (i / (hrHistory.length - 1)) * w,
-    y: v > 0 ? h - ((v - min) / range) * h * .85 - h * .075 : null,
+    y: v > 0 ? (h - padY) - ((v - min) / range) * (h - padY * 2) : null,
   }));
 
   // Fill gradient
   const grad = hrCtx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0,   color + "44");
-  grad.addColorStop(1,   color + "03");
+  grad.addColorStop(0, color + "33");
+  grad.addColorStop(1, color + "03");
 
   hrCtx.beginPath();
   let first = true;
@@ -66,8 +64,7 @@ function drawHrChart() {
     first ? hrCtx.moveTo(p.x, p.y) : hrCtx.lineTo(p.x, p.y);
     first = false;
   }
-  // Close fill path down to baseline
-  const lastValid = [...pts].reverse().find(p => p.y !== null);
+  const lastValid  = [...pts].reverse().find(p => p.y !== null);
   const firstValid = pts.find(p => p.y !== null);
   if (lastValid && firstValid) {
     hrCtx.lineTo(lastValid.x, h);
@@ -86,9 +83,19 @@ function drawHrChart() {
     first = false;
   }
   hrCtx.strokeStyle = color;
-  hrCtx.lineWidth   = 1.5;
+  hrCtx.lineWidth   = 2;
   hrCtx.lineJoin    = "round";
+  hrCtx.lineCap     = "round";
   hrCtx.stroke();
+
+  // Draw dots on each data point
+  for (const p of pts) {
+    if (p.y === null) continue;
+    hrCtx.beginPath();
+    hrCtx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+    hrCtx.fillStyle = color;
+    hrCtx.fill();
+  }
 }
 
 window.addEventListener("resize", drawHrChart);
@@ -126,14 +133,18 @@ function updateData(d) {
 
   $("hr-icon").style.color = isAbnormal
     ? "var(--red)"
-    : "var(--fg-muted)";
+    : d.finger ? "var(--green)" : "var(--fg-muted)";
 
-  const hrVal = displayBpm ? d.bpm : 0;
-  if (hrHistory.length === 0 || hrHistory[hrHistory.length - 1] !== hrVal) {
+  // Full-width graph — visible only when finger is on the sensor
+  if (d.finger) {
+    hrGraphSection.classList.remove("hidden");
+    const hrVal = displayBpm ? d.bpm : 0;
     hrHistory.push(hrVal);
     if (hrHistory.length > MAX_HR_HISTORY) hrHistory.shift();
+    drawHrChart();
+  } else {
+    hrGraphSection.classList.add("hidden");
   }
-  drawHrChart();
 
   // ── Stress ─────────────────────────────────────────────────
   const stressEl = $("stress-level");
@@ -248,100 +259,6 @@ function formatUptime(secs) {
   return `${s}s`;
 }
 
-// ── Logs ───────────────────────────────────────────────────────
-function appendLog(entry) {
-  allLogs.unshift(entry);
-  if (allLogs.length > MAX_LOGS) allLogs.pop();
-  renderLogs();
-}
-
-function renderLogs() {
-  const area = $("log-area");
-  const filtered = logFilter === "ALL"
-    ? allLogs
-    : allLogs.filter(e => e.level === logFilter);
-
-  $("log-count").textContent = `${filtered.length} entries`;
-
-  if (filtered.length === 0) {
-    area.innerHTML = `<p class="muted text-sm">No ${logFilter === "ALL" ? "" : logFilter + " "}logs yet...</p>`;
-    return;
-  }
-
-  area.innerHTML = filtered.map(e => `
-    <div class="log-entry">
-      <span class="log-ts">${(e.ts / 1000).toFixed(1)}s</span>
-      <span class="log-level lv-${e.level.toLowerCase()}">${e.level}</span>
-      <span class="log-tag">[${e.tag}]</span>
-      <span class="log-msg">${escHtml(e.msg)}</span>
-    </div>`
-  ).join("");
-}
-
-function clearLogs() {
-  allLogs = [];
-  renderLogs();
-}
-
-function escHtml(s) {
-  return String(s)
-    .replace(/&/g,"&amp;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;");
-}
-
-// Filter buttons
-document.querySelectorAll(".filter-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    logFilter = btn.dataset.level;
-    renderLogs();
-  });
-});
-
-// ── Audio ──────────────────────────────────────────────────────
-function handleAudio(base64Raw) {
-  try {
-    const clean   = base64Raw.replace(/[^A-Za-z0-9+/=]/g, "");
-    const padded  = clean.padEnd(clean.length + (4 - clean.length % 4) % 4, "=");
-    const binary  = atob(padded);
-    const bytes   = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-    if (audioUrl) URL.revokeObjectURL(audioUrl);
-    audioBlob = new Blob([bytes], { type: "audio/wav" });
-    audioUrl  = URL.createObjectURL(audioBlob);
-
-    const audioEl = $("audio-el");
-    audioEl.src   = audioUrl;
-
-    $("audio-empty").classList.add("hidden");
-    $("audio-player").classList.remove("hidden");
-    $("audio-size").textContent =
-      `${Math.round(base64Raw.length / 1024)} KB base64 → ~${Math.round(base64Raw.length * 0.75 / 1024)} KB WAV`;
-  } catch(e) {
-    console.error("[Audio] Decode failed:", e);
-  }
-}
-
-function clearAudio() {
-  if (audioUrl) URL.revokeObjectURL(audioUrl);
-  audioUrl = audioBlob = null;
-  $("audio-el").src = "";
-  $("audio-empty").classList.remove("hidden");
-  $("audio-player").classList.add("hidden");
-  $("audio-size").textContent = "";
-}
-
-function downloadAudio() {
-  if (!audioUrl) return;
-  const a = document.createElement("a");
-  a.href = audioUrl;
-  a.download = `mic-recording-${Date.now()}.wav`;
-  a.click();
-}
-
 // ── Camera ─────────────────────────────────────────────────────
 // IMPORTANT: never use outerHTML to replace #cam-img — that destroys
 // the element and breaks all subsequent open/close calls until page refresh.
@@ -423,27 +340,11 @@ function connectSSE() {
     catch(err) { console.error("[SSE] data parse error:", err); }
   });
 
-  es.addEventListener("log", e => {
-    try { appendLog(JSON.parse(e.data)); }
-    catch {}
-  });
-
   es.addEventListener("alert", e => {
     try {
       const msg = JSON.parse(e.data);
       emergency.classList.toggle("hidden", !msg.emergency);
     } catch {}
-  });
-
-  es.addEventListener("audio", e => {
-    handleAudio(e.data);
-  });
-
-  es.addEventListener("ai_response", e => {
-    const aiSection  = $("ai-section");
-    const aiResponse = $("ai-response");
-    aiSection.classList.remove("hidden");
-    aiResponse.textContent = e.data;
   });
 
   es.onerror = () => {

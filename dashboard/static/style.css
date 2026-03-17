@@ -176,8 +176,20 @@ body {
 .hr-big    { display: flex; align-items: baseline; gap: .25rem; margin: .25rem 0; }
 .hr-value  { font-size: 2.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .hr-unit   { font-size: .75rem; color: var(--fg-muted); }
-.chart-wrap { height: 72px; margin-top: .5rem; overflow: hidden; }
-canvas { width: 100% !important; }
+
+/* ── Heart Rate Full-Width Graph Section ─────────── */
+.hr-graph-section .card { padding: 1rem 1.25rem; }
+.hr-graph-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: .75rem;
+}
+.badge-finger {
+  background: rgba(74,222,128,.12);
+  color: var(--green);
+  border-color: rgba(74,222,128,.3);
+}
+.chart-wrap-full { overflow: hidden; }
+.chart-wrap-full canvas { width: 100% !important; display: block; }
 
 /* ── Stress Card ──────────────────────────────────── */
 .stress-big {
@@ -238,24 +250,6 @@ canvas { width: 100% !important; }
   transition: width .5s ease;
 }
 
-/* ── Audio Debug ──────────────────────────────────── */
-.audio-empty {
-  display: flex; flex-direction: column; align-items: center;
-  padding: 1.5rem 0; color: var(--fg-muted); gap: .25rem; text-align: center;
-}
-.audio-actions { display: flex; gap: .5rem; margin-top: .5rem; }
-.ai-pre {
-  background: var(--bg-muted);
-  border-radius: var(--radius);
-  padding: .75rem;
-  font-size: .7rem;
-  font-family: 'JetBrains Mono', monospace;
-  overflow: auto; max-height: 12rem;
-  white-space: pre-wrap; word-break: break-all;
-  color: var(--fg-muted);
-}
-.divider { height: 1px; background: var(--border); margin: .75rem 0; }
-
 /* ── Waiting Cards ────────────────────────────────── */
 .wait-card {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -278,38 +272,6 @@ canvas { width: 100% !important; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Logs ─────────────────────────────────────────── */
-.logs-card  { padding: 1rem; }
-.logs-header {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  flex-wrap: wrap; gap: .5rem; margin-bottom: .75rem;
-}
-.logs-toolbar { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
-.filter-group { display: flex; gap: .25rem; }
-.filter-btn {
-  background: none; border: 1px solid transparent;
-  border-radius: var(--radius); color: var(--fg-muted);
-  cursor: pointer; font-size: .7rem; font-weight: 600;
-  padding: .2rem .45rem;
-  transition: all .15s;
-}
-.filter-btn:hover  { background: var(--bg-muted); color: var(--fg); }
-.filter-btn.active { background: var(--bg-muted); color: var(--fg); border-color: var(--border); }
-.log-area {
-  height: 14rem; overflow-y: auto;
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: .75rem;
-  font-family: 'JetBrains Mono', monospace; font-size: .7rem; line-height: 1.6;
-}
-.log-entry { display: flex; gap: .5rem; }
-.log-ts    { color: var(--fg-muted); white-space: nowrap; flex-shrink: 0; }
-.log-level { width: 2.75rem; flex-shrink: 0; font-weight: 700; }
-.log-tag   { color: var(--primary); flex-shrink: 0; }
-.log-msg   { color: var(--fg); word-break: break-word; }
-.lv-debug  { color: #71717a; }
-.lv-info   { color: var(--blue); }
-.lv-warn   { color: var(--yellow); }
-.lv-error  { color: var(--red); }
 
 /* ── Buttons ──────────────────────────────────────── */
 .btn {
