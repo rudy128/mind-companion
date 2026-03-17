@@ -745,10 +745,10 @@ static void onVibrateRequest() {
     LOG_INFO("MAIN", "Manual vibrate request: 2s vibe, 20s camera, resetting awake cycle");
 }
 static void onClearEmergency()   {
-    emergencyFlag  = false;
-    sleepEmergency = false;   // clear the sleep-mode flag so speaker loop stops
-    // Stop any looping audio that was started by the sleep emergency
-    if (audioQuotesIsPlaying()) audioQuotesStop();
+    emergencyFlag     = false;
+    sleepEmergency    = false;
+    manualAlarmActive = false;
+    audioQuotesStop();
     deepSleepStartTime = 0;   // allow re-trigger if user goes back to deep sleep
     tftUpdateEmergency(false);
     xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
@@ -770,16 +770,23 @@ static void onMqttCommand(const String& cmd) {
         ledBreathingStart();
         breathingEndMs = 0;   // indefinite — dashboard controls stop
     } else if (cmd == "alarm_on") {
-        if (!emergencyFlag && !speechBusy) {
+        if (!speechBusy) {
+            // Stop any active audio (e.g. sleep-emergency loop) so we
+            // get a clean handoff — no two sources fighting over the speaker.
+            audioQuotesStop();
             manualAlarmActive = true;
-            LOG_INFO("MQTT_CMD", "Manual alarm ON via dashboard");
+            playFileLooped("/q1.mp3");
+            LOG_INFO("MQTT_CMD", "Manual alarm ON — took over speaker");
         } else {
-            LOG_WARN("MQTT_CMD", "Ignored alarm_on (emergency or mic active)");
+            LOG_WARN("MQTT_CMD", "Ignored alarm_on (mic active)");
         }
     } else if (cmd == "alarm_off") {
         manualAlarmActive = false;
-        if (!sleepEmergency) audioQuotesStop();
-        LOG_INFO("MQTT_CMD", "Manual alarm OFF via dashboard");
+        // Always stop — if sleep emergency is still active, the loop()
+        // block will detect it on the next iteration and re-init the
+        // emergency audio cycle from scratch.
+        audioQuotesStop();
+        LOG_INFO("MQTT_CMD", "Manual alarm OFF — speaker released");
     } else if (cmd == "vibrate") {
         onVibrateRequest();
     } else if (cmd == "clear_emergency") {
