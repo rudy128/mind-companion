@@ -177,12 +177,23 @@ body {
 .hr-value  { font-size: 2.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .hr-unit   { font-size: .75rem; color: var(--fg-muted); }
 
-/* ── Graphs Section (always visible, full width) ─── */
+/* ── Graphs Section: 2 side by side, 1 below; all square ─── */
 .graphs-section {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
+.graphs-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+.graphs-row-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.graphs-row-one {
+  display: flex;
+  justify-content: center;
+}
+.graphs-row-one .graph-card { width: 100%; max-width: calc((100% - 1rem) / 2); }
 .graph-card { padding: 1rem 1.25rem; }
 .graph-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -193,8 +204,12 @@ body {
   color: var(--green);
   border-color: rgba(74,222,128,.3);
 }
-.chart-wrap-full { overflow: hidden; }
-.chart-wrap-full canvas { width: 100% !important; display: block; }
+.chart-wrap { overflow: hidden; }
+.chart-wrap-square {
+  aspect-ratio: 1;
+  width: 100%;
+}
+.chart-wrap-square canvas { width: 100% !important; height: 100% !important; display: block; object-fit: contain; }
 
 /* ── Stress Card ──────────────────────────────────── */
 .stress-big {

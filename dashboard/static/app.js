@@ -30,12 +30,15 @@ const emergency   = $("emergency-banner");
 function drawAxisChart(canvas, data, config) {
   const ctx = canvas.getContext("2d");
   const dpr = window.devicePixelRatio || 1;
-  const w   = canvas.offsetWidth || 600;
-  const h   = config.height || 140;
+  const wrap = canvas.parentElement;
+  const size = wrap ? Math.min(wrap.offsetWidth || 400, wrap.offsetHeight || 400) : 400;
+  const w = config.square !== false && wrap && wrap.classList.contains("chart-wrap-square") ? size : (canvas.offsetWidth || 600);
+  const h = config.square !== false && wrap && wrap.classList.contains("chart-wrap-square") ? size : (config.height || 140);
 
   canvas.width  = w * dpr;
   canvas.height = h * dpr;
-  canvas.style.height = h + "px";
+  canvas.style.width  = w + "px";
+  canvas.style.height  = h + "px";
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, w, h);
 
