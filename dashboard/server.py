@@ -59,7 +59,7 @@ def on_disconnect(client, userdata, disconnect_flags, rc, properties=None):
     print(f"[MQTT] Disconnected (rc={rc})")
 
 def on_message(client, userdata, msg):
-    global latest_state, log_buffer
+    global latest_state
     topic   = msg.topic
     payload = msg.payload.decode("utf-8", errors="replace")
 

@@ -272,7 +272,6 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-
 /* ── Buttons ──────────────────────────────────────── */
 .btn {
   display: inline-flex; align-items: center; justify-content: center;

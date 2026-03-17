@@ -4,7 +4,6 @@
 #include "openai_api.h"
 #include "../config.h"
 #include "../network/wifi_manager.h"
-#include "../network/mqtt_client.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
