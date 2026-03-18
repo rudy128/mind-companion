@@ -29,6 +29,10 @@ static char requestedFile[64] = "";
 static volatile bool loopMode = false;
 static char loopFile[64] = "";
 
+// Stop is handled inside audioTask (Core 0) to avoid cross-core access
+// to the Audio library object.
+static volatile bool stopRequested = false;
+
 // Forward declaration
 static void initAudioObject();
 
@@ -42,6 +46,18 @@ void audioTask(void* param) {
     if (audioPaused || pAudio == nullptr) {
       prevRunning = false;
       vTaskDelay(pdMS_TO_TICKS(50));
+      continue;
+    }
+
+    // Stop is processed inside the audio task to prevent cross-core races
+    // (Core 1 requests stop via shared flags).
+    if (stopRequested) {
+      stopRequested = false;
+      if (pAudio != nullptr) {
+        pAudio->stopSong();
+      }
+      prevRunning = false;
+      vTaskDelay(pdMS_TO_TICKS(1));
       continue;
     }
     
@@ -98,9 +114,7 @@ void audioQuotesStop() {
   loopMode = false;
   loopFile[0] = '\0';
   playRequested = false;
-  if (pAudio != nullptr) {
-    pAudio->stopSong();
-  }
+  stopRequested = true;
 }
 
 // Pause audio and FULLY release I2S0 for microphone
