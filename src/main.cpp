@@ -690,8 +690,25 @@ void loop() {
                         playFileLooped("/q1.mp3");
                     }
                 } else {
-                    // Not in Deep Sleep — reset the timer
+                    // Not in Deep Sleep — reset the pending timer
                     deepSleepStartTime = 0;
+                }
+            } else {
+                // If we've already triggered a *sleep* emergency, clear it as soon
+                // as the user leaves Deep Sleep (to any other state).
+                //
+                // Keep manual alarm/button emergency independent.
+                if (sleepEmergency && !manualAlarmActive && sq != "Deep Sleep") {
+                    LOG_INFO("MAIN", "Deep Sleep emergency cleared (sleep state changed)");
+                    emergencyFlag  = false;
+                    sleepEmergency = false;
+                    audioQuotesStop();
+                    deepSleepStartTime = 0;
+                    tftUpdateEmergency(false);
+                    xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
+                    dashState.emergencyActive = false;
+                    xSemaphoreGive(mqttDashMutex);
+                    mqttPublishAlert(false);
                 }
             }
         }
