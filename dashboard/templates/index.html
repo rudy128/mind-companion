@@ -182,56 +182,50 @@
 
   </div><!-- /grid -->
 
-  <!-- ── Graphs — 2 side by side, 1 below; all square ─── -->
+  <!-- ── Graphs — all three in one row, small height ─── -->
   <div class="graphs-section mt-lg">
-
-    <div class="graphs-row graphs-row-two">
-      <!-- Heart Rate Graph -->
-      <div class="card graph-card">
-        <div class="graph-header">
-          <div class="card-head">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-            <span class="card-label">Heart Rate</span>
-          </div>
-          <span id="finger-badge" class="badge badge-finger hidden">
-            <span class="badge-dot"></span>
-            Finger Detected
-          </span>
+    <!-- Heart Rate Graph -->
+    <div class="card graph-card">
+      <div class="graph-header">
+        <div class="card-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span class="card-label">Heart Rate</span>
         </div>
-        <div class="chart-wrap chart-wrap-square">
-          <canvas id="hr-chart"></canvas>
-        </div>
+        <span id="finger-badge" class="badge badge-finger hidden">
+          <span class="badge-dot"></span>
+          Finger Detected
+        </span>
       </div>
-
-      <!-- Sleep State Graph -->
-      <div class="card graph-card">
-        <div class="graph-header">
-          <div class="card-head">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-            <span class="card-label">Sleep State</span>
-          </div>
-        </div>
-        <div class="chart-wrap chart-wrap-square">
-          <canvas id="sleep-chart"></canvas>
-        </div>
+      <div class="chart-wrap chart-wrap-short">
+        <canvas id="hr-chart"></canvas>
       </div>
     </div>
 
-    <div class="graphs-row graphs-row-one">
-      <!-- Stress Level Graph -->
-      <div class="card graph-card">
-        <div class="graph-header">
-          <div class="card-head">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            <span class="card-label">Stress Level</span>
-          </div>
+    <!-- Sleep State Graph -->
+    <div class="card graph-card">
+      <div class="graph-header">
+        <div class="card-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <span class="card-label">Sleep State</span>
         </div>
-        <div class="chart-wrap chart-wrap-square">
-          <canvas id="stress-chart"></canvas>
-        </div>
+      </div>
+      <div class="chart-wrap chart-wrap-short">
+        <canvas id="sleep-chart"></canvas>
       </div>
     </div>
 
+    <!-- Stress Level Graph -->
+    <div class="card graph-card">
+      <div class="graph-header">
+        <div class="card-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span class="card-label">Stress Level</span>
+        </div>
+      </div>
+      <div class="chart-wrap chart-wrap-short">
+        <canvas id="stress-chart"></canvas>
+      </div>
+    </div>
   </div>
 
 </main>

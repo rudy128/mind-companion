@@ -31,9 +31,11 @@ function drawAxisChart(canvas, data, config) {
   const ctx = canvas.getContext("2d");
   const dpr = window.devicePixelRatio || 1;
   const wrap = canvas.parentElement;
+  const isShort = wrap && wrap.classList.contains("chart-wrap-short");
+  const isSquare = wrap && wrap.classList.contains("chart-wrap-square");
   const size = wrap ? Math.min(wrap.offsetWidth || 400, wrap.offsetHeight || 400) : 400;
-  const w = config.square !== false && wrap && wrap.classList.contains("chart-wrap-square") ? size : (canvas.offsetWidth || 600);
-  const h = config.square !== false && wrap && wrap.classList.contains("chart-wrap-square") ? size : (config.height || 140);
+  const w = wrap ? (wrap.offsetWidth || 400) : 600;
+  const h = isShort && wrap ? wrap.offsetHeight : (isSquare ? size : (config.height || 140));
 
   canvas.width  = w * dpr;
   canvas.height = h * dpr;
