@@ -19,9 +19,9 @@ static bool rtcIsDstCanada(const DateTime& now) {
     const int day   = now.day();
     const int hour  = now.hour();
 
-    // DateTime::dayOfWeek(): 0 = Sunday ... 6 = Saturday (RTClib convention)
+    // RTClib uses dayOfTheWeek(): 0 = Sunday ... 6 = Saturday
     auto dow = [](int y, int m, int d) -> int {
-        return DateTime(y, m, d, 0, 0, 0).dayOfWeek();
+        return DateTime(y, m, d, 0, 0, 0).dayOfTheWeek();
     };
 
     auto secondSundayInMarch = [&]() -> int {
@@ -82,7 +82,8 @@ void rtcFormatTime(char* buf, size_t len) {
     // If you keep the DS3231 on "standard time", apply DST for display.
     // Assumption: DST offset is only +1 hour (Canada-style rules).
     const int offsetHours = rtcIsDstCanada(now) ? 1 : 0;
-    DateTime adj = now + TimeSpan(offsetHours, 0, 0);
+    // TimeSpan(days, hours, minutes, seconds)
+    DateTime adj = now + TimeSpan(0, (int8_t)offsetHours, 0, 0);
     snprintf(buf, len, "%02d:%02d:%02d", adj.hour(), adj.minute(), adj.second());
 }
 
