@@ -5,7 +5,8 @@
  */
 
 // ── State ──────────────────────────────────────────────────────
-const MAX_HISTORY = 60;
+const MAX_HISTORY      = 60;   // HR and Stress: 60 seconds
+const MAX_SLEEP_HISTORY = 120; // Sleep state: 120 seconds
 
 let hrHistory     = [];
 let sleepHistory  = [];
@@ -382,10 +383,10 @@ function updateData(d) {
     "Awake":       "sleep-awake",
   }[d.sleep] ?? "badge-outline");
 
-  // Record sleep (only Deep/Light/Awake)
+  // Record sleep (only Deep/Light/Awake) — keep 120 s for Sleep graph
   if (d.sleep in SLEEP_MAP) {
     sleepHistory.push(SLEEP_MAP[d.sleep]);
-    if (sleepHistory.length > MAX_HISTORY) sleepHistory.shift();
+    if (sleepHistory.length > MAX_SLEEP_HISTORY) sleepHistory.shift();
     drawSleepChart();
   }
 
