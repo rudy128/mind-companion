@@ -17,6 +17,28 @@ let camAutoOpened = false;
 const SLEEP_MAP  = { "Deep Sleep": 0, "Light Sleep": 1, "Awake": 2 };
 const STRESS_MAP = { "Low": 0, "Moderate": 1, "High": 2 };
 
+// Overall stress score: 40 / 50 / 85 / 100 % and label
+function getOverallStress(d) {
+  if (!d) return { pct: null, label: "—", level: "normal" };
+  const hr = d.finger && d.bpm != null ? Number(d.bpm) : null;
+  const gsr = d.stress;
+  const sleep = d.sleep;
+
+  const hrAbnormal = hr != null && (hr >= 130 || hr <= 60);
+  const hrHigh = hr != null && hr >= 130;
+  const gsrModerate = gsr === "Moderate";
+  const gsrHigh = gsr === "High";
+  const gsrLow = gsr === "Low";
+  const sleepOk = sleep === "Awake" || sleep === "Light Sleep";
+  const sleepBad = sleep === "Deep Sleep" || sleep === "Restless";
+
+  if (sleepBad) return { pct: 100, label: "Attention Needed!", level: "attention" };
+  if (hrHigh || gsrHigh) return { pct: 85, label: "High", level: "high" };
+  if (gsrModerate) return { pct: 50, label: "Moderate", level: "high" };
+  if (hrAbnormal && gsrLow && sleepOk) return { pct: 40, label: "Elevated", level: "moderate" };
+  return { pct: 0, label: "Normal", level: "normal" };
+}
+
 // ── DOM refs ───────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 
@@ -316,6 +338,20 @@ function updateData(d) {
   waitConn.classList.add("hidden");
   waitData.classList.add("hidden");
   sensorGrid.classList.remove("hidden");
+
+  // ── Overall Stress (highlight) ───────────────────────────────
+  const overall = getOverallStress(d);
+  const overallCard = $("overall-stress-card");
+  const overallPct = $("overall-stress-pct");
+  const overallMsg = $("overall-stress-msg");
+  if (overallCard && overallPct && overallMsg) {
+    overallPct.textContent = overall.pct != null ? overall.pct : "--";
+    overallMsg.textContent = overall.label;
+    overallMsg.classList.remove("muted");
+    overallCard.classList.remove("overall-stress-high", "overall-stress-attention");
+    if (overall.level === "attention") overallCard.classList.add("overall-stress-attention");
+    else if (overall.level === "high" || overall.pct >= 50) overallCard.classList.add("overall-stress-high");
+  }
 
   // ── Heart Rate ─────────────────────────────────────────────
   const displayBpm = d.finger && d.bpm > 0;
