@@ -553,7 +553,7 @@ void loop() {
         // ── Heart Rate ────────────────────────────────────
         if (hasHeartRate) {
             bool  finger = heartRateFingerPresent();
-            int   bpm    = (int)heartRateGetBPM();
+            int   bpm    = (int)(heartRateGetBPM() + 0.5f);  // round for display
             tftUpdateHeartRate(bpm, finger);  // change-guarded inside
             xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
             dashState.heartBPM      = bpm;
