@@ -227,23 +227,22 @@ function drawAxisChart(canvas, data, config) {
 
 function drawHrChart() {
   const vals = hrHistory.filter(v => v > 0);
-  let yMin, yMax, labels;
+  const yMin = 0;
+  let yMax = 160;
+  let labels;
 
   if (vals.length > 0) {
-    yMin = Math.max(0, Math.min(...vals) - 10);
-    yMax = Math.max(...vals) + 10;
+    yMax = Math.max(100, Math.max(...vals) + 10);
     const mid = Math.round((yMin + yMax) / 2);
     labels = [
-      { value: Math.round(yMin), label: `${Math.round(yMin)}` },
-      { value: mid,              label: `${mid}` },
+      { value: 0,   label: "0" },
+      { value: mid, label: `${Math.round(mid)}` },
       { value: Math.round(yMax), label: `${Math.round(yMax)}` },
     ];
   } else {
-    yMin = 40; yMax = 160;
     labels = [
-      { value: 40,  label: "40" },
+      { value: 0,   label: "0" },
       { value: 80,  label: "80" },
-      { value: 120, label: "120" },
       { value: 160, label: "160" },
     ];
   }
@@ -337,8 +336,8 @@ function updateData(d) {
   // Finger badge on graph
   $("finger-badge").classList.toggle("hidden", !d.finger);
 
-  // Record HR (push 0 when no finger so graph shows gap as null)
-  const hrVal = displayBpm ? d.bpm : null;
+  // Record HR every tick: 0 when no finger so line drops to 0 and time keeps passing
+  const hrVal = displayBpm ? d.bpm : 0;
   hrHistory.push(hrVal);
   if (hrHistory.length > MAX_HISTORY) hrHistory.shift();
   drawHrChart();
@@ -358,12 +357,11 @@ function updateData(d) {
     ? `${Number(d.gsr).toFixed(1)} µS`
     : "-- µS";
 
-  // Record stress (only Low/Moderate/High)
-  if (d.stress in STRESS_MAP) {
-    stressHistory.push(STRESS_MAP[d.stress]);
-    if (stressHistory.length > MAX_HISTORY) stressHistory.shift();
-    drawStressChart();
-  }
+  // Record stress every tick: 0 when no valid level so line drops to 0 and time keeps passing
+  const stressVal = d.stress in STRESS_MAP ? STRESS_MAP[d.stress] : 0;
+  stressHistory.push(stressVal);
+  if (stressHistory.length > MAX_HISTORY) stressHistory.shift();
+  drawStressChart();
 
   // ── Sleep ──────────────────────────────────────────────────
   const sleepDescriptions = {
