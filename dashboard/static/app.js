@@ -392,8 +392,8 @@ function updateData(d) {
     ? `${Number(d.gsr).toFixed(1)} µS`
     : "-- µS";
 
-  // Record stress every tick: 0 when no valid level so line drops to 0 and time keeps passing
-  const stressVal = d.stress in STRESS_MAP ? STRESS_MAP[d.stress] : 0;
+  // Record stress every tick. When "please wear" state, force graph to 0 (no reading).
+  const stressVal = isWearStrap ? 0 : (d.stress in STRESS_MAP ? STRESS_MAP[d.stress] : 0);
   stressHistory.push(stressVal);
   if (stressHistory.length > MAX_HISTORY) stressHistory.shift();
   drawStressChart();
