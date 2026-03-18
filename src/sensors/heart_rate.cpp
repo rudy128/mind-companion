@@ -24,8 +24,11 @@ static bool     fingerOn   = false;
 
 // EMA smoothing: blend new average with previous (0.35 = responsive but smooth)
 static const float EMA_ALPHA = 0.35f;
-// Outlier: reject beat if its BPM is more than ±28% from current window average
-static const float OUTLIER_RATIO = 0.28f;
+// Physiological range: trust beats in this range so we don't lock low (e.g. watch says 82, we had 60)
+static const float BPM_TRUST_LO = 55.0f;
+static const float BPM_TRUST_HI = 120.0f;
+// Outlier: for beats outside trust range, reject if more than ±45% from window average
+static const float OUTLIER_RATIO = 0.45f;
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -93,8 +96,10 @@ void heartRateUpdate() {
             if (bpm < 20.0f || bpm > 255.0f) return;
 
             float winAvg = windowAverage();
-            // Outlier rejection: if we have enough history, skip beats far from current trend
-            if (rateCount >= 3 && winAvg > 0) {
+            // Outlier rejection: trust beats in normal resting range (55–120) so reading can match watch
+            if (bpm >= BPM_TRUST_LO && bpm <= BPM_TRUST_HI) {
+                // Accept without rejection — avoids locking low when true rate is e.g. 82
+            } else if (rateCount >= 3 && winAvg > 0) {
                 float lo = winAvg * (1.0f - OUTLIER_RATIO);
                 float hi = winAvg * (1.0f + OUTLIER_RATIO);
                 if (bpm < lo || bpm > hi) return;
