@@ -14,8 +14,8 @@ static const int FREQ    = 5000;
 static const int RES     = 8;
 
 // ── Timing ────────────────────────────────────────────────────
-static const unsigned long FADE_IN_MS  = 1000;   // dark → full bright
-static const unsigned long FADE_OUT_MS = 1000;   // full bright → dark
+static const unsigned long FADE_IN_MS  = 1500;   // dark → full bright
+static const unsigned long FADE_OUT_MS = 1500;   // full bright → dark
 static const unsigned long PAUSE_MS    = 150;   // rest between cycles (LED off)
 
 // ── State: 0 = fade-in, 1 = fade-out, 2 = pause ─────────────
