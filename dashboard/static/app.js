@@ -19,19 +19,28 @@ const SLEEP_MAP  = { "Deep Sleep": 0, "Light Sleep": 1, "Awake": 2 };
 const STRESS_MAP = { "Low": 0, "Moderate": 1, "High": 2 };
 
 // Overall stress score: 40 / 50 / 85 / 100 % and label
+// If 2+ parameters are missing → "Not enough data". If 1 missing, calculate with the rest.
 function getOverallStress(d) {
   if (!d) return { pct: null, label: "—", level: "normal" };
-  const hr = d.finger && d.bpm != null ? Number(d.bpm) + BPM_OFFSET : null;
-  const gsr = d.stress;
+
+  const hasHR    = !!(d.finger && d.bpm != null && d.bpm > 0);
+  const hasGSR   = !!(d.stress && d.stress in STRESS_MAP);
+  const hasSleep = !!(d.sleep && ["Deep Sleep", "Light Sleep", "Restless", "Awake"].includes(d.sleep));
+  const validCount = (hasHR ? 1 : 0) + (hasGSR ? 1 : 0) + (hasSleep ? 1 : 0);
+
+  if (validCount < 2) return { pct: null, label: "Not enough data", level: "normal" };
+
+  const hr    = hasHR ? Number(d.bpm) + BPM_OFFSET : null;
+  const gsr   = d.stress;
   const sleep = d.sleep;
 
   const hrAbnormal = hr != null && (hr >= 130 || hr <= 60);
-  const hrHigh = hr != null && hr >= 130;
+  const hrHigh     = hr != null && hr >= 130;
   const gsrModerate = gsr === "Moderate";
-  const gsrHigh = gsr === "High";
-  const gsrLow = gsr === "Low";
-  const sleepOk = sleep === "Awake" || sleep === "Light Sleep";
-  const sleepBad = sleep === "Deep Sleep" || sleep === "Restless";
+  const gsrHigh    = gsr === "High";
+  const gsrLow     = gsr === "Low";
+  const sleepOk    = sleep === "Awake" || sleep === "Light Sleep";
+  const sleepBad   = sleep === "Deep Sleep" || sleep === "Restless";
 
   if (sleepBad) return { pct: 100, label: "Attention Needed!", level: "attention" };
   if (hrHigh || gsrHigh) return { pct: 85, label: "High", level: "high" };
