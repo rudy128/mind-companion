@@ -123,6 +123,18 @@
 #define GSR_LOW_THRESHOLD       4000.0f
 #define GSR_MODERATE_THRESHOLD  2000.0f
 
+// ========================= RTC (DST handling) =========================
+// DS3231 stores "whatever you set it to" (often local time). The firmware
+// displays time directly from the RTC, so if you keep the RTC on "standard"
+// time, DST will appear 1 hour behind/ahead after the DST switch.
+//
+// For Canada (most provinces), DST rules match:
+// - starts: 2nd Sunday in March at 02:00
+// - ends  : 1st Sunday in November at 02:00
+//
+// This adds +1 hour to the *displayed* time when DST is active.
+#define RTC_APPLY_CANADA_DST 1
+
 // ========================= Audio Quotes System =========================
 // Audio quotes are now managed by the audio_quotes module.
 // Audio files must be in LittleFS as MP3 files.
