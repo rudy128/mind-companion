@@ -257,7 +257,20 @@ bool playQuoteByHashmap(const char* quoteText) {
   return true;
 }
 
+// Calm quote keys (must match AUDIO_QUOTE_MAP in config.h) for random pick
+static const char* const CALM_QUOTES[] = {
+  "Take a deep breath",
+  "This feeling will pass",
+  "Slow down, you got this",
+};
+static const int NUM_CALM = sizeof(CALM_QUOTES) / sizeof(CALM_QUOTES[0]);
+
 bool playQuoteByCategory(QuoteCategory category) {
+  if (category == QUOTE_CALM && NUM_CALM > 0) {
+    int idx = random(0, NUM_CALM);
+    return playQuoteByHashmap(CALM_QUOTES[idx]);
+  }
+  // Fallback for other categories (e.g. emergency/breathe)
   playFile(ALARM_AUDIO_FILE);
   return true;
 }
