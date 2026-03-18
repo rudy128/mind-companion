@@ -177,11 +177,12 @@ body {
 .hr-value  { font-size: 2.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .hr-unit   { font-size: .75rem; color: var(--fg-muted); }
 
-/* ── Graphs Section: all three in one row, small height ─── */
+/* ── Graphs Section: all three in one row, square charts, kept small ─── */
 .graphs-section {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 1rem;
+  max-width: 420px;
 }
 .graph-card { padding: 0.75rem 1rem; }
 .graph-header {
@@ -195,7 +196,7 @@ body {
 }
 .chart-wrap { overflow: hidden; }
 .chart-wrap-short {
-  height: 100px;
+  aspect-ratio: 1;
   width: 100%;
 }
 .chart-wrap-short canvas { width: 100% !important; height: 100% !important; display: block; }

@@ -34,8 +34,8 @@ function drawAxisChart(canvas, data, config) {
   const isShort = wrap && wrap.classList.contains("chart-wrap-short");
   const isSquare = wrap && wrap.classList.contains("chart-wrap-square");
   const size = wrap ? Math.min(wrap.offsetWidth || 400, wrap.offsetHeight || 400) : 400;
-  const w = wrap ? (wrap.offsetWidth || 400) : 600;
-  const h = isShort && wrap ? wrap.offsetHeight : (isSquare ? size : (config.height || 140));
+  const w = (isShort || isSquare) && wrap ? size : (wrap ? (wrap.offsetWidth || 600) : 600);
+  const h = (isShort || isSquare) && wrap ? size : (config.height || 140);
 
   canvas.width  = w * dpr;
   canvas.height = h * dpr;
