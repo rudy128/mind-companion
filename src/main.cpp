@@ -74,7 +74,7 @@ static bool          buttonWasPressed = false;
 static bool emergencyFlag = false;
 
 // Differentiates sleep-triggered emergency from hardware-button emergency.
-//   true  → deep-sleep alert: speaker loops q1.mp3
+//   true  → deep-sleep alert: speaker loops ALARM_AUDIO_FILE
 //   false → button / voice emergency: speaker stays SILENT
 // Set ONLY by the 90-second deep-sleep detector. Cleared by dashboard.
 static bool sleepEmergency = false;
@@ -529,7 +529,7 @@ void loop() {
     // playFileLooped is idempotent — only triggers once, then the audio
     // system handles continuous replay internally until audioQuotesStop().
     if ((sleepEmergency && emergencyFlag) || manualAlarmActive) {
-        playFileLooped("/q1.mp3");
+        playFileLooped(ALARM_AUDIO_FILE);
     }
 
     xSemaphoreGive(actuatorMutex);
@@ -669,9 +669,9 @@ void loop() {
 
             // ── Deep-Sleep Emergency ────────────────────────────────────
             // If the user stays in Deep Sleep for ≥90 seconds, trigger an
-            // emergency AND start looping q1.mp3 as an audio alert.
+            // emergency AND start looping alarm audio (ALARM_AUDIO_FILE).
             // This is a SEPARATE mode from the hardware-button emergency:
-            //   • sleepEmergency = true  → speaker plays q1.mp3 in a loop
+            //   • sleepEmergency = true  → speaker plays alarm file in a loop
             //   • sleepEmergency = false → button/voice emergency — silent
             // Only the dashboard (clear_emergency) can stop this.
             if (!emergencyFlag) {         // don’t stack on top of an active emergency
@@ -687,7 +687,7 @@ void loop() {
                         dashState.emergencyActive = true;
                         xSemaphoreGive(mqttDashMutex);
                         mqttPublishAlert(true);
-                        playFileLooped("/q1.mp3");
+                        playFileLooped(ALARM_AUDIO_FILE);
                     }
                 } else {
                     // Not in Deep Sleep — reset the pending timer
@@ -794,7 +794,7 @@ static void onMqttCommand(const String& cmd) {
             // get a clean handoff — no two sources fighting over the speaker.
             audioQuotesStop();
             manualAlarmActive = true;
-            playFileLooped("/q1.mp3");
+            playFileLooped(ALARM_AUDIO_FILE);
             LOG_INFO("MQTT_CMD", "Manual alarm ON — took over speaker");
         } else {
             LOG_WARN("MQTT_CMD", "Ignored alarm_on (mic active)");

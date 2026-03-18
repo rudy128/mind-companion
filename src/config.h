@@ -135,6 +135,10 @@
 // This adds +1 hour to the *displayed* time when DST is active.
 #define RTC_APPLY_CANADA_DST 1
 
+// ========================= Alarm / Buzzer audio =========================
+// File played when alarm is on (sleep emergency or manual alarm from dashboard).
+#define ALARM_AUDIO_FILE "/q1.mp3"
+
 // ========================= Audio Quotes System =========================
 // Audio quotes are now managed by the audio_quotes module.
 // Audio files must be in LittleFS as MP3 files.

@@ -258,7 +258,7 @@ bool playQuoteByHashmap(const char* quoteText) {
 }
 
 bool playQuoteByCategory(QuoteCategory category) {
-  playFile("/q1.mp3");
+  playFile(ALARM_AUDIO_FILE);
   return true;
 }
 
@@ -268,8 +268,9 @@ bool playAudioFile(const char* filepath) {
 }
 
 void audioQuotesTestPlay() {
-  Serial.println("TEST: Playing /q1.mp3...");
-  playFile("/q1.mp3");
+  Serial.print("TEST: Playing ");
+  Serial.println(ALARM_AUDIO_FILE);
+  playFile(ALARM_AUDIO_FILE);
 }
 
 bool audioQuotesIsPlaying() {
