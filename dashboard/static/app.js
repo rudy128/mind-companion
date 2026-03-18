@@ -339,16 +339,14 @@ function updateData(d) {
   waitData.classList.add("hidden");
   sensorGrid.classList.remove("hidden");
 
-  // ── Overall Stress (hero) ───────────────────────────────────
+  // ── Overall Stress (KPI) ─────────────────────────────────────
   const overall = getOverallStress(d);
   const overallCard = $("overall-stress-card");
   const overallPct = $("overall-stress-pct");
   const overallMsg = $("overall-stress-msg");
-  const overallBar = $("overall-stress-bar");
   if (overallCard && overallPct && overallMsg) {
     overallPct.textContent = overall.pct != null ? overall.pct : "--";
     overallMsg.textContent = overall.label;
-    if (overallBar) overallBar.style.width = (overall.pct != null ? Math.min(100, overall.pct) : 0) + "%";
     overallCard.classList.remove("overall-stress-high", "overall-stress-attention");
     if (overall.level === "attention") overallCard.classList.add("overall-stress-attention");
     else if (overall.level === "high" || (overall.pct != null && overall.pct >= 50)) overallCard.classList.add("overall-stress-high");
