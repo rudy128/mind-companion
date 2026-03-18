@@ -301,12 +301,13 @@ function drawStressChart() {
   drawAxisChart($("stress-chart"), stressHistory, {
     height:  130,
     color:   "#facc15",
-    yMin:    -0.3,
+    yMin:    -1.2,
     yMax:    2.3,
     yLabels: [
-      { value: 0, label: "Low" },
-      { value: 1, label: "Mid" },
-      { value: 2, label: "High" },
+      { value: -1, label: "—" },
+      { value: 0,  label: "Low" },
+      { value: 1,  label: "Mid" },
+      { value: 2,  label: "High" },
     ],
     stepped: true,
     leftPad: 52,
@@ -392,8 +393,8 @@ function updateData(d) {
     ? `${Number(d.gsr).toFixed(1)} µS`
     : "-- µS";
 
-  // Record stress every tick. When "please wear" state, force graph to 0 (no reading).
-  const stressVal = isWearStrap ? 0 : (d.stress in STRESS_MAP ? STRESS_MAP[d.stress] : 0);
+  // Record stress every tick. When "please wear" state, use -1 so graph drops below Low (no reading).
+  const stressVal = isWearStrap ? -1 : (d.stress in STRESS_MAP ? STRESS_MAP[d.stress] : 0);
   stressHistory.push(stressVal);
   if (stressHistory.length > MAX_HISTORY) stressHistory.shift();
   drawStressChart();
