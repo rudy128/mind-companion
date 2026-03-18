@@ -7,6 +7,7 @@
 // ── State ──────────────────────────────────────────────────────
 const MAX_HISTORY      = 60;   // HR and Stress: 60 seconds
 const MAX_SLEEP_HISTORY = 120; // Sleep state: 120 seconds
+const BPM_OFFSET       = 28;   // Add to BPM from MQTT only (dashboard) to align with natural BPM
 
 let hrHistory     = [];
 let sleepHistory  = [];
@@ -20,7 +21,7 @@ const STRESS_MAP = { "Low": 0, "Moderate": 1, "High": 2 };
 // Overall stress score: 40 / 50 / 85 / 100 % and label
 function getOverallStress(d) {
   if (!d) return { pct: null, label: "—", level: "normal" };
-  const hr = d.finger && d.bpm != null ? Number(d.bpm) : null;
+  const hr = d.finger && d.bpm != null ? Number(d.bpm) + BPM_OFFSET : null;
   const gsr = d.stress;
   const sleep = d.sleep;
 
@@ -353,12 +354,13 @@ function updateData(d) {
     else if (overall.level === "high" || (overall.pct != null && overall.pct >= 50)) overallCard.classList.add("overall-stress-high");
   }
 
-  // ── Heart Rate ─────────────────────────────────────────────
-  const displayBpm = d.finger && d.bpm > 0;
-  const isAbnormal = d.finger && d.bpm > 0 && (d.bpm > 120 || d.bpm < 50);
+  // ── Heart Rate (add BPM_OFFSET only when we have a value from MQTT) ──
+  const displayBpm = d.finger && d.bpm != null && d.bpm > 0;
+  const bpmDisplay = displayBpm ? (Number(d.bpm) + BPM_OFFSET) : null;
+  const isAbnormal = displayBpm && (bpmDisplay > 120 || bpmDisplay < 50);
 
   const bpmEl = $("hr-bpm");
-  bpmEl.textContent = displayBpm ? d.bpm : "--";
+  bpmEl.textContent = displayBpm ? bpmDisplay : "--";
   bpmEl.className = "hr-value " + (isAbnormal ? "stress-high" : displayBpm ? "stress-low" : "muted");
 
   $("hr-status").textContent = !d.finger
@@ -372,8 +374,8 @@ function updateData(d) {
   // Finger badge on graph
   $("finger-badge").classList.toggle("hidden", !d.finger);
 
-  // Record HR every tick: 0 when no finger so line drops to 0 and time keeps passing
-  const hrVal = displayBpm ? d.bpm : 0;
+  // Record HR every tick: 0 when no finger; when from MQTT use adjusted BPM
+  const hrVal = displayBpm ? bpmDisplay : 0;
   hrHistory.push(hrVal);
   if (hrHistory.length > MAX_HISTORY) hrHistory.shift();
   drawHrChart();
