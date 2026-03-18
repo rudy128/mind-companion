@@ -345,11 +345,13 @@ function updateData(d) {
   // ── Stress ─────────────────────────────────────────────────
   const stressEl = $("stress-level");
   stressEl.textContent = d.stress ?? "--";
-  stressEl.className = "stress-big " + {
+  const isWearStrap = d.stress && String(d.stress).toLowerCase().includes("please wear");
+  const stateClass = {
     "Low":      "stress-low",
     "Moderate": "stress-moderate",
     "High":     "stress-high",
   }[d.stress] ?? "muted";
+  stressEl.className = "stress-big " + (isWearStrap ? "stress-wear-strap " : "") + stateClass;
 
   $("gsr-value").textContent = d.gsr != null
     ? `${Number(d.gsr).toFixed(1)} µS`
