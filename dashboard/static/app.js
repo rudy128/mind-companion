@@ -339,18 +339,19 @@ function updateData(d) {
   waitData.classList.add("hidden");
   sensorGrid.classList.remove("hidden");
 
-  // ── Overall Stress (highlight) ───────────────────────────────
+  // ── Overall Stress (hero) ───────────────────────────────────
   const overall = getOverallStress(d);
   const overallCard = $("overall-stress-card");
   const overallPct = $("overall-stress-pct");
   const overallMsg = $("overall-stress-msg");
+  const overallBar = $("overall-stress-bar");
   if (overallCard && overallPct && overallMsg) {
     overallPct.textContent = overall.pct != null ? overall.pct : "--";
     overallMsg.textContent = overall.label;
-    overallMsg.classList.remove("muted");
+    if (overallBar) overallBar.style.width = (overall.pct != null ? Math.min(100, overall.pct) : 0) + "%";
     overallCard.classList.remove("overall-stress-high", "overall-stress-attention");
     if (overall.level === "attention") overallCard.classList.add("overall-stress-attention");
-    else if (overall.level === "high" || overall.pct >= 50) overallCard.classList.add("overall-stress-high");
+    else if (overall.level === "high" || (overall.pct != null && overall.pct >= 50)) overallCard.classList.add("overall-stress-high");
   }
 
   // ── Heart Rate ─────────────────────────────────────────────
@@ -380,8 +381,8 @@ function updateData(d) {
 
   // ── Stress ─────────────────────────────────────────────────
   const stressEl = $("stress-level");
-  stressEl.textContent = d.stress ?? "--";
   const isWearStrap = d.stress && String(d.stress).toLowerCase().includes("please wear");
+  stressEl.textContent = isWearStrap ? "Please wear finger straps" : (d.stress ?? "--");
   const stateClass = {
     "Low":      "stress-low",
     "Moderate": "stress-moderate",

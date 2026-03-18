@@ -62,15 +62,23 @@
   <!-- Sensor Grid -->
   <div id="sensor-grid" class="grid hidden">
 
-    <!-- Overall Stress — highlight of the page -->
+    <!-- Overall Stress — hero highlight -->
     <div id="overall-stress-card" class="card overall-stress-card">
-      <div class="overall-stress-inner">
-        <span class="overall-stress-label">Overall stress</span>
-        <div class="overall-stress-value-wrap">
-          <span id="overall-stress-pct" class="overall-stress-pct">--</span>
-          <span class="overall-stress-unit">%</span>
+      <div class="overall-stress-hero">
+        <div class="overall-stress-main">
+          <span class="overall-stress-label">Overall stress</span>
+          <div class="overall-stress-value-wrap">
+            <span id="overall-stress-pct" class="overall-stress-pct">--</span>
+            <span class="overall-stress-unit">%</span>
+          </div>
+          <div class="overall-stress-bar-wrap">
+            <div id="overall-stress-bar" class="overall-stress-bar" style="width: 0%"></div>
+          </div>
         </div>
-        <p id="overall-stress-msg" class="overall-stress-msg muted">—</p>
+        <div class="overall-stress-status">
+          <span id="overall-stress-dot" class="overall-stress-dot"></span>
+          <span id="overall-stress-msg" class="overall-stress-msg">—</span>
+        </div>
       </div>
     </div>
 
