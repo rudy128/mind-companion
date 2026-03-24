@@ -553,22 +553,23 @@ void loop() {
         // ── Heart Rate ────────────────────────────────────
         if (hasHeartRate) {
             bool  finger = heartRateFingerPresent();
-            int   bpm    = (int)(heartRateGetBPM() + 0.5f);  // round for display
-            tftUpdateHeartRate(bpm, finger);  // change-guarded inside
+            int   bpmRaw = (int)(heartRateGetBPM() + 0.5f);  // rounded sensor BPM
+            int   bpmTft = finger && bpmRaw > 0 ? (bpmRaw + 28) : bpmRaw; // align TFT with dashboard
+            tftUpdateHeartRate(bpmTft, finger);  // change-guarded inside
             xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
-            dashState.heartBPM      = bpm;
+            dashState.heartBPM      = bpmRaw; // keep MQTT payload raw; dashboard applies +28 client-side
             dashState.fingerPresent = finger;
             xSemaphoreGive(mqttDashMutex);
 
-            Serial.printf("[TICK-HR] bpm=%d finger=%d\n", bpm, (int)finger);
+            Serial.printf("[TICK-HR] bpm(raw)=%d bpm(tft)=%d finger=%d\n", bpmRaw, bpmTft, (int)finger);
 
             // DEBUG: confirm dashState is being updated for MQTT
             static int lastLoggedBpm = -1;
             static bool lastLoggedFinger = false;
-            if (bpm != lastLoggedBpm || finger != lastLoggedFinger) {
+            if (bpmRaw != lastLoggedBpm || finger != lastLoggedFinger) {
                 LOG_INFO("DASH", "dashState updated — bpm=%d finger=%s",
-                         bpm, finger ? "true" : "false");
-                lastLoggedBpm = bpm;
+                         bpmRaw, finger ? "true" : "false");
+                lastLoggedBpm = bpmRaw;
                 lastLoggedFinger = finger;
             }
 
@@ -579,7 +580,7 @@ void loop() {
                 if (!ledBreathingIsActive()) {
                     ledBreathingStart();   // indefinite — no end time set
                     breathingEndMs = 0;
-                    LOG_WARN("MAIN", "Abnormal HR %d bpm — starting breathing LED", bpm);
+                    LOG_WARN("MAIN", "Abnormal HR %d bpm — starting breathing LED", bpmRaw);
                 }
                 xSemaphoreGive(actuatorMutex);
             } else {
@@ -588,7 +589,7 @@ void loop() {
                 xSemaphoreTake(actuatorMutex, portMAX_DELAY);
                 if (ledBreathingIsActive() && breathingEndMs == 0) {
                     ledBreathingStop();
-                    LOG_INFO("MAIN", "HR normalised (%d bpm) — stopping breathing LED", bpm);
+                    LOG_INFO("MAIN", "HR normalised (%d bpm) — stopping breathing LED", bpmRaw);
                 }
                 xSemaphoreGive(actuatorMutex);
             }
