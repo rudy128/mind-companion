@@ -29,6 +29,7 @@
 // Actuators
 #include "actuators/led_breathing.h"
 #include "actuators/vibration.h"
+#include "actuators/audio_quotes.h"
 
 // Display
 #include "display/tft_display.h"
