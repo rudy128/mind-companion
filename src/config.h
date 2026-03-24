@@ -137,7 +137,7 @@
 
 // ========================= Alarm / Buzzer audio =========================
 // File played when alarm is on (sleep emergency or manual alarm from dashboard).
-#define ALARM_AUDIO_FILE "/q1.mp3"
+#define ALARM_AUDIO_FILE "/Buzzersound.mp3"
 
 // ========================= Audio Quotes System =========================
 // Audio quotes are now managed by the audio_quotes module.

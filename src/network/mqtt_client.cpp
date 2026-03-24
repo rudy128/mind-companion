@@ -23,28 +23,29 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
-// ── Internal state ───────────────────────────────────────────
+// ── Variables ───────────────────────────────────────────
 static WiFiClient       _wifiClient;
 static PubSubClient     _mqtt(_wifiClient);
 static MqttDashState*   _state          = nullptr;
 static MqttCmdCallback  _cmdCallback    = nullptr;
+
 static unsigned long    _lastPublish    = 0;
 static unsigned long    _lastReconnect  = 0;
-static const unsigned long PUBLISH_INTERVAL_MS   = 1000;   // 1 Hz telemetry
+
+static const unsigned long PUBLISH_INTERVAL_MS   = 1000;   // Sends data every 1 sec
 static const unsigned long RECONNECT_INTERVAL_MS = 2000;   // retry every 2 s
-static const unsigned long TASK_TICK_MS          = 50;      // task wakes every 50 ms
+static const unsigned long TASK_TICK_MS          = 50;      // task runs every 50 ms
 
 // Task handle
 static TaskHandle_t     _mqttTaskHandle = nullptr;
 
-// Cross-core alert request (set by Core 1, consumed by Core 0 task)
 static volatile bool    _alertPending   = false;
 static volatile bool    _alertValue     = false;
 
-// DashState mutex — protects String fields from tearing across cores
+// Mutex to protect shared data 
 SemaphoreHandle_t mqttDashMutex = nullptr;
 
-// ── MQTT message callback (incoming commands) ────────────────
+// ── Receive message from MQTT ──────────────────────────────
 static void _onMessage(char* topic, byte* payload, unsigned int length) {
     char buf[256];
     unsigned int copyLen = (length < sizeof(buf) - 1) ? length : sizeof(buf) - 1;
@@ -53,6 +54,7 @@ static void _onMessage(char* topic, byte* payload, unsigned int length) {
 
     LOG_INFO("MQTT", "Received [%s]: %s", topic, buf);
 
+    // Check if it's a command
     if (String(topic) == MQTT_TOPIC_CMD && _cmdCallback) {
         JsonDocument doc;
         DeserializationError err = deserializeJson(doc, buf);
@@ -63,18 +65,18 @@ static void _onMessage(char* topic, byte* payload, unsigned int length) {
         String cmd = doc["cmd"] | "";
         if (cmd.length() > 0) {
             LOG_INFO("MQTT", "Command: %s", cmd.c_str());
-            _cmdCallback(cmd);
+            _cmdCallback(cmd);           //Send command to handler
         }
     }
 }
 
-// ── Connect / reconnect to broker ────────────────────────────
+// ── Connect / reconnect to MQTT broker ────────────────────────────
 static bool _connect() {
     LOG_INFO("MQTT", "Connecting to %s:%d ...", MQTT_SERVER, MQTT_PORT);
     
     if (_mqtt.connect(MQTT_CLIENT_ID)) {
         LOG_INFO("MQTT", "Connected to broker");
-        _mqtt.subscribe(MQTT_TOPIC_CMD);
+        _mqtt.subscribe(MQTT_TOPIC_CMD);            //listen to commands
         LOG_INFO("MQTT", "Subscribed to %s", MQTT_TOPIC_CMD);
         return true;
     }
@@ -83,17 +85,16 @@ static bool _connect() {
     return false;
 }
 
-// ── Publish helpers (called from the task context) ───────────
+// ── Send Dashboard data ───────────────────────────────────────
 
 static void _publishState() {
     if (!_state || !_mqtt.connected()) return;
 
-    // Snapshot the shared state under mutex — hold time is just the
-    // struct copy, not the JSON serialization or network I/O.
+    //copy shared data under mutex
     MqttDashState snap;
     if (mqttDashMutex && xSemaphoreTake(mqttDashMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         snap = *_state;
-        // Clear one-shot camera flag while we hold the mutex
+        // Reset Camera Open flag
         if (_state->cameraOpen) {
             _state->cameraOpen = false;
         }
@@ -103,11 +104,11 @@ static void _publishState() {
         return;
     }
 
-    // DEBUG: unconditionally log every publish
     Serial.printf("[PUB] bpm=%d finger=%d gsr=%.1f\n",
                   snap.heartBPM, (int)snap.fingerPresent,
                   (float)snap.gsrValue);
 
+    //Create JSON data to send
     JsonDocument doc;
     doc["bpm"]       = snap.heartBPM;
     doc["finger"]    = snap.fingerPresent;
@@ -129,12 +130,15 @@ static void _publishState() {
 
     char json[512];
     size_t len = serializeJson(doc, json, sizeof(json));
+
+    //Send data 
     bool ok = _mqtt.publish(MQTT_TOPIC_DATA, (const uint8_t*)json, (unsigned int)len, false);
     if (!ok) {
         LOG_WARN("MQTT", "publish(mind/data) failed — connected=%d", _mqtt.connected());
     }
 }
 
+//Send emergency alert
 static void _publishAlert(bool active) {
     if (!_mqtt.connected()) return;
 
@@ -147,7 +151,7 @@ static void _publishAlert(bool active) {
     _mqtt.publish(MQTT_TOPIC_ALERT, json, true);   // retained
 }
 
-// ── The MQTT FreeRTOS task — runs on Core 0 ──────────────────
+// ── MQTT task ──────────────────
 static void _mqttTask(void* param) {
     LOG_INFO("MQTT", "Task started on Core %d", xPortGetCoreID());
 
@@ -160,14 +164,14 @@ static void _mqttTask(void* param) {
                 LOG_WARN("MQTT", "Not connected (state=%d) — reconnecting...", _mqtt.state());
                 if (_connect()) {
                     _mqtt.loop();          // drain SUBACK
-                    _lastPublish = millis(); // publish immediately after reconnect
+                    _lastPublish = millis(); 
                 }
             }
             vTaskDelay(pdMS_TO_TICKS(TASK_TICK_MS));
             continue;
         }
 
-        // ── Process incoming messages + keepalive ────────
+        // ── Keep connection alive ────────
         unsigned long t0 = millis();
         bool ok = _mqtt.loop();
         unsigned long dt = millis() - t0;
@@ -181,13 +185,13 @@ static void _mqttTask(void* param) {
             continue;
         }
 
-        // ── Consume cross-core alert request ─────────────
+        // ── Send alert if requested ─────────────
         if (_alertPending) {
             _publishAlert(_alertValue);
             _alertPending = false;
         }
 
-        // ── Publish telemetry at 1 Hz ────────────────────
+        // ── Send data every 1 second ────────────────────
         unsigned long now = millis();
         if (now - _lastPublish >= PUBLISH_INTERVAL_MS) {
             _lastPublish = now;
@@ -211,12 +215,12 @@ static void _mqttTask(void* param) {
     }
 }
 
-// ── Public API ───────────────────────────────────────────────
+// ── Initialize MQTT ───────────────────────────────────────────────
 
 void mqttInit(MqttDashState* state) {
     _state = state;
 
-    // Create dashState mutex once
+    // Create mutex 
     if (!mqttDashMutex) {
         mqttDashMutex = xSemaphoreCreateMutex();
     }
@@ -225,11 +229,11 @@ void mqttInit(MqttDashState* state) {
     _mqtt.setCallback(_onMessage);
     _mqtt.setBufferSize(1024);
     _mqtt.setKeepAlive(60);
-    _mqtt.setSocketTimeout(2);     // 2 s — OK because we're on our own core now
-    _wifiClient.setTimeout(500);   // 500 ms — won't stall sensors
+    _mqtt.setSocketTimeout(2);     
+    _wifiClient.setTimeout(500); 
 
     _connect();
-    _mqtt.loop();   // drain SUBACK
+    _mqtt.loop();   
 
     LOG_INFO("MQTT", "Spawning MQTT task on Core 0 (keepalive=60s, tick=%lums)",
              TASK_TICK_MS);
@@ -241,28 +245,27 @@ void mqttInit(MqttDashState* state) {
         nullptr,            // param
         2,                  // priority (above idle, below WiFi event task)
         &_mqttTaskHandle,   // handle
-        0                   // ← Core 0
+        0                   // Core 0
     );
 }
 
+// Force send data 
 void mqttPublishState() {
-    // Can still be called from Core 1 for a forced immediate publish.
-    // The task does its own 1 Hz publish, but this is safe because
-    // PubSubClient serialises writes internally.
     _publishState();
 }
 
+// Request alert 
 void mqttPublishAlert(bool active) {
-    // Called from Core 1 — hand off to the task via volatile flag
-    // so the actual publish happens on Core 0 where the socket lives.
     _alertValue   = active;
     _alertPending = true;
 }
 
+//Set command callback
 void mqttSetCommandCallback(MqttCmdCallback cb) {
     _cmdCallback = cb;
 }
 
+//Check MQTT connection status
 bool mqttIsConnected() {
     return _mqtt.connected();
 }

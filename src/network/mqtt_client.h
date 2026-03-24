@@ -1,16 +1,6 @@
 // =============================================================
-// MQTT Client — Lightweight PubSub for M.I.N.D. Companion
-// =============================================================
-// Replaces ESPAsyncWebServer. The ESP32 maintains ONE TCP
-// connection to a local Mosquitto broker. The Next.js dashboard
-// subscribes via MQTT-over-WebSocket on the same broker.
-//
-// Runs on Core 0 as a dedicated FreeRTOS task so that any
-// blocking socket reads never stall the sensor loop on Core 1.
-//
-// Publish:  mind/data   — sensor telemetry JSON  (1 Hz)
-//           mind/alert  — emergency flag changes
-// Subscribe: mind/cmd   — dashboard commands (JSON {cmd:"..."})
+// MQTT Client
+// This file defines how ESP32 sends and receives data using MQTT.
 // =============================================================
 #ifndef MQTT_CLIENT_H
 #define MQTT_CLIENT_H
@@ -18,10 +8,8 @@
 #include <Arduino.h>
 #include <freertos/semphr.h>
 
-// Shared state struct — replaces DashboardState from web_server.h
-// Populated by main.cpp (Core 1), read by MQTT task (Core 0).
-// Individual fields are atomic-width or tolerate tearing, so no
-// mutex is needed for the telemetry path.
+// Shared data between main loop (Core 1) and MQTT task (Core 0)
+// Main loop updates values, MQTT sends them to server every second
 struct MqttDashState {
     float  gsrValue;
     char   stressLevel[16];
@@ -37,33 +25,27 @@ struct MqttDashState {
     bool   micActive;
 };
 
-// ── Lifecycle ────────────────────────────────────────────────
-
 // Call once in setup() after WiFi is connected.
-// Spawns the MQTT task on Core 0. Pass a pointer to the shared state.
 void mqttInit(MqttDashState* state);
 
-// ── Manual publish helpers (thread-safe, can be called from Core 1) ──
+// ── Send data manually ──
 
-// Force-publish the current state immediately
+// Send current data immediately
 void mqttPublishState();
 
-// Publish emergency alert change to mind/alert
+// Send emergency alert
 void mqttPublishAlert(bool active);
 
-// ── Command callback registration ───────────────────────────
-// Commands received on mind/cmd are JSON: {"cmd":"breathe"}, {"cmd":"alarm_on"}, etc.
-// NOTE: The callback runs on Core 0.  Keep it short or use a queue to
-// defer work to Core 1.
+// Receieve commands from dashboard
 typedef void (*MqttCmdCallback)(const String& cmd);
+
+// Function to handle received commands
 void mqttSetCommandCallback(MqttCmdCallback cb);
 
-// ── Status ───────────────────────────────────────────────────
+// Check MQTT connection status
 bool mqttIsConnected();
 
-// Mutex for thread-safe access to MqttDashState.
-// Created in mqttInit(). Core 1 takes it while writing dashState fields,
-// Core 0 MQTT task takes it while copying fields for JSON serialization.
+// Mutex to share data safely between cores
 extern SemaphoreHandle_t mqttDashMutex;
 
-#endif // MQTT_CLIENT_H
+#endif

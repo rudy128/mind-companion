@@ -1,6 +1,6 @@
 // =============================================================
-// Audio Quotes — Time-sliced I2S sharing with microphone
-// Uses dynamic Audio object - destroyed before mic, recreated after
+// This file manages audio playback. 
+// It uses the Audio library to play MP3 files stored in LittleFS.
 // =============================================================
 #include "audio_quotes.h"
 #include "../config.h"
@@ -8,15 +8,15 @@
 #include <LittleFS.h>
 #include "driver/i2s.h"
 
-// ===== I2S PINS for MAX98357 =====
+// ===== I2S PINS for MAX98357 Amplifier=====
 #define I2S_BCLK 21
 #define I2S_LRC  0
 #define I2S_DIN  14
 
-// Dynamic Audio object - can be destroyed and recreated
+// Dynamic Audio object pointer
 static Audio* pAudio = nullptr;
 
-// Task handle for audio on Core 0
+// FreeRTOS Task handle for audio (Core 0)
 static TaskHandle_t audioTaskHandle = nullptr;
 static volatile bool audioTaskRunning = false;
 static volatile bool audioPaused = false;
@@ -29,28 +29,25 @@ static char requestedFile[64] = "";
 static volatile bool loopMode = false;
 static char loopFile[64] = "";
 
-// Stop is handled inside audioTask (Core 0) to avoid cross-core access
-// to the Audio library object.
+// Signal to stop audio without causing errors
 static volatile bool stopRequested = false;
 
-// Forward declaration
 static void initAudioObject();
 
-// Audio task runs on Core 0
+// Audio task runs on Core 0 to prevent blocking sensors and main loop on Core 1
 void audioTask(void* param) {
   Serial.println("[AUDIO] Task started on Core 0");
-  audioTaskRunning = true;
-  bool prevRunning = false;
+  audioTaskRunning = true;             //Indicates task is active
+  bool prevRunning = false;            // Tracks previous playback state
   
   for (;;) {
-    if (audioPaused || pAudio == nullptr) {
+    if (audioPaused || pAudio == nullptr) {   // If paused or not initialized, ensure audio is stopped and skip processing
       prevRunning = false;
       vTaskDelay(pdMS_TO_TICKS(50));
       continue;
     }
 
-    // Stop is processed inside the audio task to prevent cross-core races
-    // (Core 1 requests stop via shared flags).
+    // Stop is handled inside this task
     if (stopRequested) {
       stopRequested = false;
       if (pAudio != nullptr) {
@@ -76,7 +73,7 @@ void audioTask(void* param) {
       pAudio->loop();
       
       bool nowRunning = pAudio->isRunning();
-      // Detect transition: was playing → just stopped
+      // Detect transition: Audio was playing or just stopped
       if (prevRunning && !nowRunning && loopMode && strlen(loopFile) > 0) {
         Serial.print("[AUDIO] Looping: ");
         Serial.println(loopFile);
@@ -98,7 +95,10 @@ static void initAudioObject() {
     vTaskDelay(pdMS_TO_TICKS(50));
   }
   
-  pAudio = new Audio();
+  //Create new audio object
+  pAudio = new Audio();   
+
+  //Configure I2S pins and playback settings
   pAudio->setPinout(I2S_BCLK, I2S_LRC, I2S_DIN);
   pAudio->setVolume(40);
   pAudio->forceMono(true);
@@ -135,8 +135,7 @@ void audioQuotesPause() {
     pAudio = nullptr;
   }
   
-  // Belt-and-suspenders: force uninstall in case Audio didn't clean up
-  // (ignore error if already uninstalled)
+  // Force uninstall in case Audio didn't clean up (Fails silently if already uninstalled)
   i2s_driver_uninstall(I2S_NUM_0);
   
   vTaskDelay(pdMS_TO_TICKS(100));
@@ -149,7 +148,7 @@ void audioQuotesResume() {
   
   Serial.println("[AUDIO] Recreating audio system...");
   
-  // Recreate the Audio object fresh
+  // Recreate the fresh Audio object 
   initAudioObject();
   
   audioPaused = false;

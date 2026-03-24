@@ -1,5 +1,6 @@
 // =============================================================
-// Centralized Logger — Serial-only (no RAM ring buffer)
+// Common Logger 
+// This file prints messages to Serial
 // =============================================================
 #include "logger.h"
 #include <stdarg.h>
@@ -29,7 +30,7 @@ static const char* levelColor(LogLevel l) {
 }
 
 // ── Public API ───────────────────────────────────────────────
-
+//Initialize Logger
 void logInit(LogLevel level) {
     minLevel = level;
     Serial.println("[LOG] Logger initialized (Serial only)");

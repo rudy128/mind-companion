@@ -1,6 +1,8 @@
-// =============================================================
-// TFT Display — ILI9341 Implementation
-// =============================================================
+// ==========================================================================================
+// This file contains the implementation for the TFT Display using ILI9341 library
+// It includes functions to initialize the display, show a boot screen, and show update
+// for various sections (time, heart rate, motion, sleep, stress, emergency,listening status).
+// ==========================================================================================
 #include "tft_display.h"
 #include "../config.h"
 #include "../actuators/audio_quotes.h"
@@ -12,16 +14,16 @@
 
 static Adafruit_ILI9341 tft(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCK, TFT_RST);
 
-// ── SPI mutex — prevents Core 0 (speech) and Core 1 (loop)
+// ── SPI Lock— prevents Core 0 (speech) and Core 1 (loop)
 //    from colliding on the software-SPI bus simultaneously.
 //    All tftUpdate* functions must take this before any tft.* call.
 static SemaphoreHandle_t _tftMutex = nullptr;
 
-// Helper macros — keep call sites clean
+// Lock/Unlock macros — keep call sites clean
 #define TFT_LOCK()   xSemaphoreTake(_tftMutex, portMAX_DELAY)
 #define TFT_UNLOCK() xSemaphoreGive(_tftMutex)
 
-// Previous values for change detection
+// Previous values for change detection so we do not reprint it
 static char    prevTime[9]    = "";
 static int     prevBPM        = -1;
 static bool    prevFinger     = false;
@@ -30,7 +32,7 @@ static String  prevSleep      = "";
 static String  prevStress     = "";
 static bool    prevEmergency  = false;
 
-// ============ Layout Constants ============
+// ============ Layout Positions ============
 // Y positions for each section
 #define Y_TIME       5
 #define Y_MPU_LABEL  20
@@ -47,8 +49,9 @@ static bool    prevEmergency  = false;
 #define Y_SPEECH       270
 #define Y_IP           290
 
+//Initialize TFT
 void tftInit() {
-    // Create mutex once — must happen before any other core can call tftUpdate*
+    // Create mutex once 
     if (_tftMutex == nullptr) {
         _tftMutex = xSemaphoreCreateMutex();
     }
@@ -58,6 +61,7 @@ void tftInit() {
     Serial.println("[TFT] Display initialized");
 }
 
+//Show Boot Screen
 void tftShowBootScreen() {
     TFT_LOCK();
     tft.fillScreen(ILI9341_BLACK);
@@ -94,6 +98,7 @@ void tftShowBootScreen() {
     delay(2500);
 }
 
+//Draw main dashboard labels (MPU, Heart, Sleep, Stress) — called once at startup
 void tftDrawDashboardLabels() {
     TFT_LOCK();
     tft.fillScreen(ILI9341_BLACK);
@@ -116,10 +121,11 @@ void tftDrawDashboardLabels() {
     tft.println("Mind:");
     TFT_UNLOCK();
 
-    // Default heart rate display (already mutex-guarded inside)
+    // Default heart rate display to show "not detected" until sensor reads something
     tftUpdateHeartRate(0, false);
 }
 
+//Update time 
 void tftUpdateTime(const char* timeStr) {
     if (strcmp(prevTime, timeStr) == 0) return;
     strncpy(prevTime, timeStr, sizeof(prevTime) - 1);
@@ -133,6 +139,7 @@ void tftUpdateTime(const char* timeStr) {
     TFT_UNLOCK();
 }
 
+//Update heart rate section with BPM and finger status
 void tftUpdateHeartRate(int bpm, bool fingerPresent) {
     if (bpm == prevBPM && fingerPresent == prevFinger) return;
     prevBPM    = bpm;
@@ -164,6 +171,7 @@ void tftUpdateHeartRate(int bpm, bool fingerPresent) {
     TFT_UNLOCK();
 }
 
+//Update motion values from MPU6050
 void tftUpdateMPU(int x, int y, int z) {
     if (x == prevMX && y == prevMY && z == prevMZ) return;
     prevMX = x; prevMY = y; prevMZ = z;
@@ -177,6 +185,7 @@ void tftUpdateMPU(int x, int y, int z) {
     TFT_UNLOCK();
 }
 
+//Update sleep quality status
 void tftUpdateSleep(const String& quality) {
     if (quality == prevSleep) return;
     prevSleep = quality;
@@ -195,6 +204,7 @@ void tftUpdateSleep(const String& quality) {
     TFT_UNLOCK();
 }
 
+//Update stress level and show motivational quote if high
 void tftUpdateStress(const String& level, float gsrValue) {
     if (level == prevStress) return;
     prevStress = level;
@@ -203,7 +213,7 @@ void tftUpdateStress(const String& level, float gsrValue) {
     // Clear the full stress value + quote area (60 px tall to cover any wrapped text)
     tft.fillRect(0, Y_STRESS_VAL, 240, 60, ILI9341_BLACK);
 
-    // Explicitly handle the 'not worn' message returned by the GSR logic
+    // Handle the 'not worn' message returned by the GSR logic
     if (level == "Please wear finger straps") {
         tft.setTextColor(ILI9341_RED);
         tft.setTextSize(2);            // size 2 = 12px/char wide, 16px tall
@@ -259,6 +269,7 @@ void tftUpdateStress(const String& level, float gsrValue) {
     TFT_UNLOCK();
 }
 
+//Updates IP address on TFT when connected to WiFi
 void tftUpdateIP(const String& ip) {
     TFT_LOCK();
     tft.fillRect(10, Y_IP, 230, 20, ILI9341_BLACK);
@@ -269,6 +280,7 @@ void tftUpdateIP(const String& ip) {
     TFT_UNLOCK();
 }
 
+//Updates emergency status on TFT when alert is active
 void tftUpdateEmergency(bool active) {
     if (active == prevEmergency) return;
     prevEmergency = active;
@@ -284,6 +296,7 @@ void tftUpdateEmergency(bool active) {
     TFT_UNLOCK();
 }
 
+//Updates speech transcription status on TFT
 void tftUpdateSpeechStatus(const String& text) {
     TFT_LOCK();
     tft.fillRect(0, Y_SPEECH, 240, 15, ILI9341_BLACK);
@@ -296,6 +309,7 @@ void tftUpdateSpeechStatus(const String& text) {
     TFT_UNLOCK();
 }
 
+//Show "Listening..." on TFT when speech recognition is active
 void tftShowListening(bool active) {
     TFT_LOCK();
     tft.fillRect(0, Y_SPEECH, 240, 15, ILI9341_BLACK);

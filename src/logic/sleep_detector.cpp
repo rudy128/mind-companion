@@ -14,12 +14,13 @@
 
 #define SLEEP_WINDOW_SAMPLES 30   // 30 samples × 1 s = 30-second window
 
-static float         deltaBuffer[SLEEP_WINDOW_SAMPLES];
-static float         axesBuffer[SLEEP_WINDOW_SAMPLES];  // active-axes count per sample
+static float         deltaBuffer[SLEEP_WINDOW_SAMPLES];  //total movement
+static float         axesBuffer[SLEEP_WINDOW_SAMPLES];  // axes with significant movement
 static int           bufferIndex    = 0;
 static bool          bufferFull     = false;
-static String        quality        = "Awake";
+static String        quality        = "Awake";          //Current sleep quality
 
+//Initalize sleep detector
 void sleepDetectorInit() {
     memset(deltaBuffer, 0, sizeof(deltaBuffer));
     memset(axesBuffer,  0, sizeof(axesBuffer));
@@ -29,22 +30,24 @@ void sleepDetectorInit() {
     Serial.println("[SLEEP] Detector initialized (30-sample ring buffer, 1 s/sample)");
 }
 
+//Feed new movement data (called every second)
 void sleepDetectorFeed(float dx, float dy, float dz, int activeAxes) {
-    float totalDelta = dx + dy + dz;
+    float totalDelta = dx + dy + dz;            //total movement
 
-    // Store both delta and axis count in ring buffers
+    // Store both delta and axis count in buffer
     deltaBuffer[bufferIndex] = totalDelta;
     axesBuffer[bufferIndex]  = (float)activeAxes;
     bufferIndex++;
 
+    // Reset index when buffer is full
     if (bufferIndex >= SLEEP_WINDOW_SAMPLES) {
         bufferFull  = true;
         bufferIndex = 0;
     }
 
-    // Only evaluate once we have a full 30-sample window
     if (!bufferFull) return;
 
+    //Calculate average 
     float deltaSum = 0, axesSum = 0;
     for (int i = 0; i < SLEEP_WINDOW_SAMPLES; i++) {
         deltaSum += deltaBuffer[i];
@@ -53,37 +56,26 @@ void sleepDetectorFeed(float dx, float dy, float dz, int activeAxes) {
     float avgDelta      = deltaSum / SLEEP_WINDOW_SAMPLES;
     float avgActiveAxes = axesSum  / SLEEP_WINDOW_SAMPLES;
 
-    // Calibrated thresholds — derived from real serial log observations:
-    //
-    //   Observed ranges on this hardware (MPU6050 accel, threshold 0.3 g):
-    //     Full board movement : avgDelta ≈ 2.5–3.5,  avgAxes ≈ 1.5–2.0
-    //     Restless / fidget   : avgDelta ≈ 0.3–1.5,  avgAxes ≈ 0.5–1.2
-    //     True still          : avgDelta < 0.10,     avgAxes ≈ 0.00
-    //
-    //   avgAxes ALONE is not a reliable discriminator because the MPU
-    //   gravity vector always contributes to Z even when the board is
-    //   stationary; full deliberate movement never reliably hits 3.
-    //   → Use avgDelta as the primary signal, avgAxes as a gate only.
-    //
-    //   Awake       : avgDelta > 1.5  (strong, sustained movement)
-    //   Light Sleep : avgDelta > 0.10 (some movement but weak/intermittent)
-    //   Deep Sleep  : avgDelta ≤ 0.10 (essentially motionless)
-    if (avgDelta > 1.5f) {
-        quality = "Awake";
+
+    // Decide sleep level based on movement thresholds
+    if (avgDelta > 1.5f) {              
+        quality = "Awake";            //lots of movement across multiple axes 
     } else if (avgDelta > 0.10f) {
-        quality = "Light Sleep";
+        quality = "Light Sleep";      //small movement or movement on few axes 
     } else {
-        quality = "Deep Sleep";
+        quality = "Deep Sleep";      //almost no movement 
     }
 
     Serial.printf("[SLEEP] avgDelta=%.4f avgAxes=%.2f → %s\n",
                   avgDelta, avgActiveAxes, quality.c_str());
 }
 
+// Get current sleep quality
 String sleepDetectorGetQuality() {
     return quality;
 }
 
+// Check if user is sleeping
 bool sleepDetectorIsSleeping() {
     return (quality == "Deep Sleep" || quality == "Light Sleep");
 }

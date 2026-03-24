@@ -1,5 +1,6 @@
 // =============================================================
 // TFT Display — ILI9341 Screen Management
+// This file has all the functions declarations used to control the TFT screen
 // =============================================================
 #ifndef TFT_DISPLAY_H
 #define TFT_DISPLAY_H
@@ -7,16 +8,16 @@
 #include <Arduino.h>
 #include <Adafruit_ILI9341.h>
 
-// Must call first
+// Setup the TFT display — call this first in setup()
 void tftInit();
 
-// Boot animation
+// Show startup screen with system info
 void tftShowBootScreen();
 
-// Draw the persistent dashboard labels
+// Draw fixed labels (MPU, Heart, Sleep, Stress)
 void tftDrawDashboardLabels();
 
-// Update individual sections (only redraws if value changed)
+// Update individual sections (only updates if value changed)
 void tftUpdateTime(const char* timeStr);
 void tftUpdateHeartRate(int bpm, bool fingerPresent);
 void tftUpdateMPU(int x, int y, int z);
@@ -28,7 +29,7 @@ void tftUpdateSpeechStatus(const String& text);
 void tftShowListening(bool active);
 
 
-// Get the global tft object for advanced use
+
 Adafruit_ILI9341& tftGetDisplay();
 
-#endif // TFT_DISPLAY_H
+#endif 

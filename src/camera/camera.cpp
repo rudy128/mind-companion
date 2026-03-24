@@ -9,7 +9,7 @@
 #include "esp_http_server.h"
 #include "esp_timer.h"
 
-// ── MJPEG multipart constants ─────────────────────────────
+// ── MJPEG streaming settings ─────────────────────────────
 static const char* STREAM_CONTENT_TYPE =
     "multipart/x-mixed-replace;boundary=frame";
 static const char* STREAM_BOUNDARY = "\r\n--frame\r\n";

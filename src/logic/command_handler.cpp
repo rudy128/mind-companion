@@ -1,15 +1,18 @@
 // =============================================================
-// Command Handler Implementation
+// This file checks what the user said in microphone input 
+// and decides what action the system should take.
 // =============================================================
 #include "command_handler.h"
 #include "../actuators/audio_quotes.h"
 #include "../network/logger.h"
 
+//Convert voice text into a command
 VoiceCommand commandParse(const String& text) {
     String lower = text;
     lower.toLowerCase();
 
-    // Breathing intent — catch all natural speech variations:
+    
+    // Check if user is asking about breathing , such as;
     //   "breathing pattern", "help me breathe", "help with breathing",
     //   "i need breathing pattern", "breathe", etc.
     if (lower.indexOf("breath") >= 0)
@@ -32,6 +35,7 @@ VoiceCommand commandParse(const String& text) {
     return CMD_NONE;
 }
 
+
 String commandToString(VoiceCommand cmd) {
     switch (cmd) {
         case CMD_BREATHING_PATTERN: return "Breathing Pattern";
@@ -43,6 +47,7 @@ String commandToString(VoiceCommand cmd) {
     }
 }
 
+//Run action based on detected command
 void commandExecute(VoiceCommand cmd) {
     LOG_INFO("CMD", "Executing command: %s", commandToString(cmd).c_str());
 
