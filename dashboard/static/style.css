@@ -175,9 +175,12 @@ body {
 .card-overall-stress.overall-stress-attention .overall-stress-value,
 .card-overall-stress.overall-stress-attention #overall-stress-msg { color: var(--red); }
 .card-overall-stress.overall-stress-attention #overall-stress-icon { color: var(--red); }
-.card-overall-stress:not(.overall-stress-high):not(.overall-stress-attention) .overall-stress-value,
-.card-overall-stress:not(.overall-stress-high):not(.overall-stress-attention) #overall-stress-msg { color: var(--green); }
-.card-overall-stress:not(.overall-stress-high):not(.overall-stress-attention) #overall-stress-icon { color: var(--green); }
+.card-overall-stress.overall-stress-moderate .overall-stress-value,
+.card-overall-stress.overall-stress-moderate #overall-stress-msg { color: var(--cyan); }
+.card-overall-stress.overall-stress-moderate #overall-stress-icon { color: var(--cyan); }
+.card-overall-stress:not(.overall-stress-high):not(.overall-stress-attention):not(.overall-stress-moderate) .overall-stress-value,
+.card-overall-stress:not(.overall-stress-high):not(.overall-stress-attention):not(.overall-stress-moderate) #overall-stress-msg { color: var(--green); }
+.card-overall-stress:not(.overall-stress-high):not(.overall-stress-attention):not(.overall-stress-moderate) #overall-stress-icon { color: var(--green); }
 
 /* ── Card ─────────────────────────────────────────── */
 .card {

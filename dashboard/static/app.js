@@ -18,35 +18,85 @@ let camAutoOpened = false;
 const SLEEP_MAP  = { "Deep Sleep": 0, "Light Sleep": 1, "Awake": 2 };
 const STRESS_MAP = { "Low": 0, "Moderate": 1, "High": 2 };
 
-// Overall stress score: 40 / 50 / 85 / 100 % and label
-// If 2+ parameters are missing → "Not enough data". If 1 missing, calculate with the rest.
+const SLEEP_KNOWN = ["Deep Sleep", "Light Sleep", "Restless", "Awake"];
+
+/**
+ * Step 1 — Base % from heart rate + GSR (display BPM = raw MQTT bpm + BPM_OFFSET).
+ * Table rows 1–10; HR ≥ 150 with Moderate/Low extended to stay consistent with high-HR risk.
+ */
+function getOverallStressBase(hr, gsrLevel) {
+  const gH = gsrLevel === "High";
+  const gM = gsrLevel === "Moderate";
+  const gL = gsrLevel === "Low";
+
+  if (hr >= 150 && gH) return 100;
+  if (hr <= 60 && gH) return 100;
+  if (hr >= 121 && hr <= 149 && gH) return 90;
+  if (hr <= 60 && gM) return 80;
+  if (hr >= 121 && hr <= 149 && gM) return 70;
+  if (hr >= 61 && hr <= 120 && gH) return 50;
+  if (hr >= 61 && hr <= 120 && gM) return 50;
+  if (hr >= 121 && hr <= 149 && gL) return 40;
+  if (hr <= 60 && gL) return 40;
+  if (hr >= 61 && hr <= 120 && gL) return 10;
+  if (hr >= 150 && gM) return 90;
+  if (hr >= 150 && gL) return 80;
+  return null;
+}
+
+/** Step 2 — Sleep modifier (added to base, final capped at 100%). */
+function getSleepModifierPct(sleep) {
+  if (sleep === "Deep Sleep") return 25;
+  if (sleep === "Restless") return 15;
+  if (sleep === "Awake" || sleep === "Light Sleep") return 0;
+  return 0;
+}
+
+/**
+ * Human-readable line from final % (aligned with doc examples and table row names).
+ */
+function getOverallStressLabelFromFinalPct(pct) {
+  if (pct >= 90) return "Attention Needed!";
+  if (pct >= 75) return "High";
+  if (pct >= 70) return "Elevated";
+  if (pct >= 50) return "Ask if child needs anything";
+  if (pct >= 40) return "Elevated";
+  if (pct >= 20) return "Mild concern";
+  return "Child is doing great!";
+}
+
+/**
+ * Overall stress KPI: HR+GSR base table + sleep modifier (cap 100%).
+ * Needs valid HR (finger + bpm) and GSR Low/Moderate/High. Sleep optional → +0 modifier.
+ */
 function getOverallStress(d) {
   if (!d) return { pct: null, label: "—", level: "normal" };
 
-  const hasHR    = !!(d.finger && d.bpm != null && d.bpm > 0);
-  const hasGSR   = !!(d.stress && d.stress in STRESS_MAP);
-  const hasSleep = !!(d.sleep && ["Deep Sleep", "Light Sleep", "Restless", "Awake"].includes(d.sleep));
-  const validCount = (hasHR ? 1 : 0) + (hasGSR ? 1 : 0) + (hasSleep ? 1 : 0);
+  const hasHR = !!(d.finger && d.bpm != null && d.bpm > 0);
+  const hasGSR = !!(d.stress && d.stress in STRESS_MAP);
+  const wearStrap = d.stress && String(d.stress).toLowerCase().includes("please wear");
 
-  if (validCount < 2) return { pct: null, label: "Not enough data", level: "normal" };
+  if (wearStrap || !hasHR || !hasGSR) {
+    return { pct: null, label: wearStrap ? "Wear GSR straps for score" : "Not enough data", level: "normal" };
+  }
 
-  const hr    = hasHR ? Number(d.bpm) + BPM_OFFSET : null;
-  const gsr   = d.stress;
+  const hr = Number(d.bpm) + BPM_OFFSET;
+  const gsr = d.stress;
   const sleep = d.sleep;
+  const hasSleep = !!(sleep && SLEEP_KNOWN.includes(sleep));
 
-  const hrAbnormal = hr != null && (hr >= 130 || hr <= 60);
-  const hrHigh     = hr != null && hr >= 130;
-  const gsrModerate = gsr === "Moderate";
-  const gsrHigh    = gsr === "High";
-  const gsrLow     = gsr === "Low";
-  const sleepOk    = sleep === "Awake" || sleep === "Light Sleep";
-  const sleepBad   = sleep === "Deep Sleep" || sleep === "Restless";
+  const base = getOverallStressBase(hr, gsr);
+  if (base == null) return { pct: null, label: "Not enough data", level: "normal" };
 
-  if (sleepBad) return { pct: 100, label: "Attention Needed!", level: "attention" };
-  if (hrHigh || gsrHigh) return { pct: 85, label: "High", level: "high" };
-  if (gsrModerate) return { pct: 50, label: "Moderate", level: "high" };
-  if (hrAbnormal && gsrLow && sleepOk) return { pct: 40, label: "Elevated", level: "moderate" };
-  return { pct: 0, label: "Normal", level: "normal" };
+  const mod = hasSleep ? getSleepModifierPct(sleep) : 0;
+  const finalPct = Math.min(100, base + mod);
+  const label = getOverallStressLabelFromFinalPct(finalPct);
+
+  let level = "normal";
+  if (finalPct >= 90) level = "attention";
+  else if (finalPct >= 40) level = "high";
+
+  return { pct: finalPct, label, level };
 }
 
 // ── DOM refs ───────────────────────────────────────────────────
@@ -358,9 +408,10 @@ function updateData(d) {
   if (overallCard && overallPct && overallMsg) {
     overallPct.textContent = overall.pct != null ? overall.pct : "--";
     overallMsg.textContent = overall.label;
-    overallCard.classList.remove("overall-stress-high", "overall-stress-attention");
+    overallCard.classList.remove("overall-stress-high", "overall-stress-attention", "overall-stress-moderate");
     if (overall.level === "attention") overallCard.classList.add("overall-stress-attention");
-    else if (overall.level === "high" || (overall.pct != null && overall.pct >= 50)) overallCard.classList.add("overall-stress-high");
+    else if (overall.pct != null && overall.pct >= 40) overallCard.classList.add("overall-stress-high");
+    else if (overall.pct != null && overall.pct >= 20) overallCard.classList.add("overall-stress-moderate");
   }
 
   // ── Heart Rate (add BPM_OFFSET only when we have a value from MQTT) ──
