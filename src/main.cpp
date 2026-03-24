@@ -29,7 +29,6 @@
 // Actuators
 #include "actuators/led_breathing.h"
 #include "actuators/vibration.h"
-#include "actuators/audio_quotes.h"
 
 // Display
 #include "display/tft_display.h"
@@ -718,26 +717,28 @@ void loop() {
         // ── GSR Stress ────────────────────────────────────
         float  conductance = gsrReadConductance();
         String stress      = gsrGetStressLevel(conductance);
+        static unsigned long lastHighQuoteTime      = 0;
+        static String        lastStressForHighQuote = "";
+        bool enteredHigh = (stress == "High" && lastStressForHighQuote != "High");
+
         tftUpdateStress(stress, conductance);
+
+        if (stress == "High") {
+            if (enteredHigh) {
+                // tftUpdateStress just picked quote + audio; skip same-tick 30s fire (lastQuoteTime was 0).
+                lastHighQuoteTime = now;
+            } else if (now - lastHighQuoteTime >= 30000UL) {
+                tftHighStressRefreshRandomQuote();
+                lastHighQuoteTime = now;
+                LOG_INFO("GSR", "High stress — new random quote (TFT + speaker matched)");
+            }
+        }
+        lastStressForHighQuote = stress;
+
         xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
         dashState.gsrValue    = conductance;
         strlcpy(dashState.stressLevel, stress.c_str(), sizeof(dashState.stressLevel));
         xSemaphoreGive(mqttDashMutex);
-
-        // ── GSR High-stress → Play audio quote ──
-        // GSR triggers audio quote playback when high stress is detected.
-        // The alarm is reserved for the emergency button (CMD_EMERGENCY).
-        if (stress == "High") {
-            LOG_WARN("GSR", "HIGH STRESS DETECTED (%.1f < %.0f)",
-                     conductance, (float)GSR_MODERATE_THRESHOLD);
-            // Play calming quote directly (non-blocking)
-            static unsigned long lastQuoteTime = 0;
-            if (now - lastQuoteTime >= 30000UL) {  // Max once every 30 seconds
-                playQuoteByCategory(QUOTE_CALM);
-                lastQuoteTime = now;
-                LOG_INFO("GSR", "Playing calming audio quote due to high stress");
-            }
-        }
     }
 
     // ── yield — lets WiFi/BT stack run between iterations ─

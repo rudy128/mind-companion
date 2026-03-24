@@ -23,6 +23,8 @@ void tftUpdateHeartRate(int bpm, bool fingerPresent);
 void tftUpdateMPU(int x, int y, int z);
 void tftUpdateSleep(const String& quality);
 void tftUpdateStress(const String& level, float gsrValue);
+// While stress is High: new random quote from AUDIO_QUOTE_MAP on TFT + matching audio (call e.g. every 30s).
+void tftHighStressRefreshRandomQuote();
 void tftUpdateIP(const String& ip);
 void tftUpdateEmergency(bool active);
 void tftUpdateSpeechStatus(const String& text);

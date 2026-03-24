@@ -205,6 +205,44 @@ void tftUpdateSleep(const String& quality) {
 }
 
 //Update stress level and show motivational quote if high
+// Caller must hold TFT_LOCK. Clears quote line, picks random AUDIO_QUOTE_MAP key, draws it, plays matching audio.
+// Returns with TFT_LOCK held (unlocks during playback).
+static void tftDrawHighStressRandomQuoteAndPlayLocked() {
+    std::vector<std::string> quoteKeys;
+    for (const auto& pair : AUDIO_QUOTE_MAP) {
+        quoteKeys.push_back(pair.first);
+    }
+    if (quoteKeys.empty()) return;
+
+    int randomIndex = random(0, (int)quoteKeys.size());
+    const std::string& keyStr = quoteKeys[randomIndex];
+    const char* selectedQuote = keyStr.c_str();
+
+    tft.fillRect(0, Y_STRESS_QUOTE, 240, 40, ILI9341_BLACK);
+    tft.setTextSize(1);
+    tft.setTextColor(ILI9341_RED);
+    tft.setCursor(10, Y_STRESS_QUOTE);
+    tft.println(selectedQuote);
+
+    TFT_UNLOCK();
+    if (playQuoteByHashmap(selectedQuote)) {
+        LOG_INFO("TFT", "Playing audio for quote: '%s'", selectedQuote);
+    } else {
+        LOG_WARN("TFT", "Failed to play audio for quote: '%s'", selectedQuote);
+    }
+    TFT_LOCK();
+}
+
+void tftHighStressRefreshRandomQuote() {
+    TFT_LOCK();
+    if (prevStress != "High") {
+        TFT_UNLOCK();
+        return;
+    }
+    tftDrawHighStressRandomQuoteAndPlayLocked();
+    TFT_UNLOCK();
+}
+
 void tftUpdateStress(const String& level, float gsrValue) {
     if (level == prevStress) return;
     prevStress = level;
@@ -227,34 +265,7 @@ void tftUpdateStress(const String& level, float gsrValue) {
         tft.setTextColor(ILI9341_RED);
         tft.setCursor(10, Y_STRESS_VAL);
         tft.println("HIGH STRESS");
-        // Show motivational quote
-        tft.setTextSize(1);
-        tft.setCursor(10, Y_STRESS_QUOTE);
-        
-        // Pick a random quote from the hashmap keys
-        std::vector<std::string> quoteKeys;
-        for (const auto& pair : AUDIO_QUOTE_MAP) {
-            quoteKeys.push_back(pair.first);
-        }
-        
-        if (quoteKeys.size() > 0) {
-            int randomIndex = random(0, quoteKeys.size());
-            const char* selectedQuote = quoteKeys[randomIndex].c_str();
-            tft.println(selectedQuote);
-            
-            // Play the corresponding audio using the hashmap lookup
-            // Release TFT lock before audio playback to avoid deadlock
-            TFT_UNLOCK();
-            
-            // Use the new function that directly looks up the hashmap
-            if (playQuoteByHashmap(selectedQuote)) {
-                LOG_INFO("TFT", "Playing audio for quote: '%s'", selectedQuote);
-            } else {
-                LOG_WARN("TFT", "Failed to play audio for quote: '%s'", selectedQuote);
-            }
-            
-            TFT_LOCK();
-        }
+        tftDrawHighStressRandomQuoteAndPlayLocked();
     } else if (level == "Moderate") {
         tft.setTextSize(2);
         tft.setTextColor(ILI9341_YELLOW);
