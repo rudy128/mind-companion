@@ -44,6 +44,26 @@ function getOverallStressBase(hr, gsrLevel) {
   return null;
 }
 
+/**
+ * HR-only base % when GSR is unavailable (e.g. straps off). Mirrors table risk by HR band.
+ */
+function getOverallStressBaseHrOnly(hr) {
+  if (hr >= 150) return 95;
+  if (hr >= 121) return 65;
+  if (hr >= 61) return 30;
+  return 60;
+}
+
+/**
+ * GSR-only base % when heart rate is unavailable (no finger). Conservative defaults.
+ */
+function getOverallStressBaseGsrOnly(gsrLevel) {
+  if (gsrLevel === "High") return 70;
+  if (gsrLevel === "Moderate") return 45;
+  if (gsrLevel === "Low") return 20;
+  return null;
+}
+
 /** Step 2 — Sleep modifier (added to base, final capped at 100%). */
 function getSleepModifierPct(sleep) {
   if (sleep === "Deep Sleep") return 25;
@@ -66,8 +86,7 @@ function getOverallStressLabelFromFinalPct(pct) {
 }
 
 /**
- * Overall stress KPI: HR+GSR base table + sleep modifier (cap 100%).
- * Needs valid HR (finger + bpm) and GSR Low/Moderate/High. Sleep optional → +0 modifier.
+ * Overall stress KPI: prefer full HR+GSR table; else HR-only or GSR-only; sleep modifier; cap 100%.
  */
 function getOverallStress(d) {
   if (!d) return { pct: null, label: "—", level: "normal" };
@@ -75,23 +94,30 @@ function getOverallStress(d) {
   const hasHR = !!(d.finger && d.bpm != null && d.bpm > 0);
   const hasGSR = !!(d.stress && d.stress in STRESS_MAP);
   const wearStrap = d.stress && String(d.stress).toLowerCase().includes("please wear");
+  const noUsableGsr = !hasGSR || wearStrap;
 
-  if (wearStrap) {
-    return { pct: null, label: d.stress || "—", level: "normal" };
-  }
-  if (!hasHR || !hasGSR) {
-    return { pct: null, label: "Not enough data", level: "normal" };
-  }
-
-  const hr = Number(d.bpm) + BPM_OFFSET;
+  const hr = hasHR ? Number(d.bpm) + BPM_OFFSET : null;
   const gsr = d.stress;
   const sleep = d.sleep;
   const hasSleep = !!(sleep && SLEEP_KNOWN.includes(sleep));
-
-  const base = getOverallStressBase(hr, gsr);
-  if (base == null) return { pct: null, label: "Not enough data", level: "normal" };
-
   const mod = hasSleep ? getSleepModifierPct(sleep) : 0;
+
+  let base = null;
+
+  if (hasHR && hasGSR) {
+    base = getOverallStressBase(hr, gsr);
+  } else if (hasHR && noUsableGsr) {
+    base = getOverallStressBaseHrOnly(hr);
+  } else if (hasGSR && !hasHR) {
+    base = getOverallStressBaseGsrOnly(gsr);
+  }
+
+  if (base == null) {
+    const label =
+      wearStrap && !hasHR ? (d.stress || "—") : "Not enough data";
+    return { pct: null, label, level: "normal" };
+  }
+
   const finalPct = Math.min(100, base + mod);
   const label = getOverallStressLabelFromFinalPct(finalPct);
 
