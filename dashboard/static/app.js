@@ -76,8 +76,11 @@ function getOverallStress(d) {
   const hasGSR = !!(d.stress && d.stress in STRESS_MAP);
   const wearStrap = d.stress && String(d.stress).toLowerCase().includes("please wear");
 
-  if (wearStrap || !hasHR || !hasGSR) {
-    return { pct: null, label: wearStrap ? "Wear GSR straps for score" : "Not enough data", level: "normal" };
+  if (wearStrap) {
+    return { pct: null, label: d.stress || "—", level: "normal" };
+  }
+  if (!hasHR || !hasGSR) {
+    return { pct: null, label: "Not enough data", level: "normal" };
   }
 
   const hr = Number(d.bpm) + BPM_OFFSET;
