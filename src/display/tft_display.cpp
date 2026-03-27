@@ -1,7 +1,7 @@
 // ==========================================================================================
 // This file contains the implementation for the TFT Display using ILI9341 library
 // It includes functions to initialize the display, show a boot screen, and show update
-// for various sections (time, heart rate, motion, sleep, stress, emergency,listening status).
+// for various sections (time, heart rate, sleep, stress, emergency, listening status).
 // ==========================================================================================
 #include "tft_display.h"
 #include "../config.h"
@@ -9,6 +9,7 @@
 #include "../network/logger.h"
 #include <vector>
 #include <string>
+#include <cmath>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -23,31 +24,40 @@ static SemaphoreHandle_t _tftMutex = nullptr;
 #define TFT_LOCK()   xSemaphoreTake(_tftMutex, portMAX_DELAY)
 #define TFT_UNLOCK() xSemaphoreGive(_tftMutex)
 
+// Light palette (RGB565) — all text on black BG; no dark blue, no saturated red
+static inline uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
+    return (uint16_t)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
+}
+static const uint16_t L_CLOUD   = rgb565(235, 238, 245);  // soft white
+static const uint16_t L_ROSE    = rgb565(255, 175, 185); // light coral / was red
+static const uint16_t L_MINT    = rgb565(165, 245, 205); // light mint / was green
+static const uint16_t L_LEMON   = rgb565(255, 245, 190); // light yellow
+static const uint16_t L_AQUA    = rgb565(150, 235, 255); // light cyan
+static const uint16_t L_SKY     = rgb565(165, 215, 255); // Deep Sleep — pale sky (not dark blue)
+static const uint16_t L_LILAC   = rgb565(225, 195, 255); // Light Sleep
+static const uint16_t L_APRICOT = rgb565(255, 205, 175); // Restless
+
 // Previous values for change detection so we do not reprint it
 static char    prevTime[9]    = "";
 static int     prevBPM        = -1;
 static bool    prevFinger     = false;
-static int     prevMX = -999, prevMY = -999, prevMZ = -999;
 static String  prevSleep      = "";
 static String  prevStress     = "";
 static bool    prevEmergency  = false;
 
 // ============ Layout Positions ============
-// Y positions for each section
-#define Y_TIME       5
-#define Y_MPU_LABEL  20
-#define Y_MPU_VAL    45
-#define Y_HR_LABEL   70
-#define Y_HR_VAL     75
-#define Y_HR_STATUS  105
-#define Y_SLEEP_LABEL 130
-#define Y_SLEEP_VAL   150
-#define Y_STRESS_LABEL 180
-#define Y_STRESS_VAL   205
-#define Y_STRESS_QUOTE 230
-#define Y_EMERGENCY    255
-#define Y_SPEECH       270
-#define Y_IP           290
+// Y positions (compact layout — no MPU / IP rows)
+#define Y_TIME         5
+#define Y_HR_LABEL     22
+#define Y_HR_VAL       27
+#define Y_HR_STATUS    57
+#define Y_SLEEP_LABEL  88
+#define Y_SLEEP_VAL    108
+#define Y_STRESS_LABEL 138
+#define Y_STRESS_VAL   163
+#define Y_STRESS_QUOTE 188
+#define Y_EMERGENCY    218
+#define Y_SPEECH       238
 
 //Initialize TFT
 void tftInit() {
@@ -66,7 +76,7 @@ void tftShowBootScreen() {
     TFT_LOCK();
     tft.fillScreen(ILI9341_BLACK);
 
-    tft.setTextColor(ILI9341_WHITE);
+    tft.setTextColor(L_CLOUD);
     tft.setTextSize(4);
     tft.setCursor(35, 60);
     tft.println("M.I.N.D.");
@@ -76,21 +86,19 @@ void tftShowBootScreen() {
     tft.println("COMPANION");
 
     tft.setTextSize(1);
-    tft.setTextColor(ILI9341_GREEN);
+    tft.setTextColor(L_MINT);
     tft.setCursor(20, 150);
     tft.println("Heart: MAX30102");
-    tft.setCursor(20, 165);
-    tft.println("Motion: MPU6050");
-    tft.setCursor(20, 180);
+    tft.setCursor(20, 168);
     tft.println("Stress: GSR Sensor");
-    tft.setCursor(20, 195);
+    tft.setCursor(20, 186);
     tft.println("Clock:  DS3231 RTC");
-    tft.setCursor(20, 210);
+    tft.setCursor(20, 204);
     tft.println("Mic:    INMP441");
-    tft.setCursor(20, 225);
+    tft.setCursor(20, 222);
     tft.println("Camera: OV2640");
 
-    tft.setTextColor(ILI9341_CYAN);
+    tft.setTextColor(L_AQUA);
     tft.setCursor(30, 260);
     tft.println("Initializing systems...");
     TFT_UNLOCK();
@@ -98,25 +106,21 @@ void tftShowBootScreen() {
     delay(2500);
 }
 
-//Draw main dashboard labels (MPU, Heart, Sleep, Stress) — called once at startup
+//Draw main dashboard labels (Heart, Sleep, Stress) — called once at startup
 void tftDrawDashboardLabels() {
     TFT_LOCK();
     tft.fillScreen(ILI9341_BLACK);
     tft.setTextSize(2);
 
-    tft.setTextColor(ILI9341_CYAN);
-    tft.setCursor(10, Y_MPU_LABEL);
-    tft.println("MPU:");
-
-    tft.setTextColor(ILI9341_RED);
+    tft.setTextColor(L_ROSE);
     tft.setCursor(10, Y_HR_LABEL);
     tft.println("Heart:");
 
-    tft.setTextColor(ILI9341_YELLOW);
+    tft.setTextColor(L_LEMON);
     tft.setCursor(10, Y_SLEEP_LABEL);
     tft.println("Sleep:");
 
-    tft.setTextColor(ILI9341_GREEN);
+    tft.setTextColor(L_MINT);
     tft.setCursor(10, Y_STRESS_LABEL);
     tft.println("Mind:");
     TFT_UNLOCK();
@@ -132,7 +136,7 @@ void tftUpdateTime(const char* timeStr) {
 
     TFT_LOCK();
     tft.fillRect(140, Y_TIME, 130, 20, ILI9341_BLACK);
-    tft.setTextColor(ILI9341_WHITE);
+    tft.setTextColor(L_CLOUD);
     tft.setTextSize(2);
     tft.setCursor(140, Y_TIME);
     tft.print(timeStr);
@@ -148,7 +152,7 @@ void tftUpdateHeartRate(int bpm, bool fingerPresent) {
     TFT_LOCK();
     // BPM value
     tft.fillRect(80, Y_HR_VAL, 160, 25, ILI9341_BLACK);
-    tft.setTextColor(ILI9341_RED);
+    tft.setTextColor(L_ROSE);
     tft.setTextSize(2);
     tft.setCursor(80, Y_HR_VAL);
     if (fingerPresent && bpm > 0) {
@@ -162,26 +166,12 @@ void tftUpdateHeartRate(int bpm, bool fingerPresent) {
     tft.setTextSize(1);
     tft.setCursor(80, Y_HR_STATUS + 5);
     if (fingerPresent) {
-        tft.setTextColor(ILI9341_GREEN);
+        tft.setTextColor(L_MINT);
         tft.print("Finger Detected");
     } else {
-        tft.setTextColor(ILI9341_RED);
+        tft.setTextColor(L_ROSE);
         tft.print("No Finger");
     }
-    TFT_UNLOCK();
-}
-
-//Update motion values from MPU6050
-void tftUpdateMPU(int x, int y, int z) {
-    if (x == prevMX && y == prevMY && z == prevMZ) return;
-    prevMX = x; prevMY = y; prevMZ = z;
-
-    TFT_LOCK();
-    tft.fillRect(10, Y_MPU_VAL, 220, 18, ILI9341_BLACK);
-    tft.setTextColor(ILI9341_CYAN);
-    tft.setTextSize(1);
-    tft.setCursor(10, Y_MPU_VAL);
-    tft.printf("X:%d  Y:%d  Z:%d", x, y, z);
     TFT_UNLOCK();
 }
 
@@ -194,10 +184,10 @@ void tftUpdateSleep(const String& quality) {
     tft.fillRect(10, Y_SLEEP_VAL, 220, 25, ILI9341_BLACK);
     tft.setTextSize(2);
 
-    if (quality == "Deep Sleep")      tft.setTextColor(ILI9341_BLUE);
-    else if (quality == "Light Sleep") tft.setTextColor(ILI9341_MAGENTA);
-    else if (quality == "Restless")    tft.setTextColor(ILI9341_ORANGE);
-    else                               tft.setTextColor(ILI9341_WHITE);
+    if (quality == "Deep Sleep")       tft.setTextColor(L_SKY);
+    else if (quality == "Light Sleep") tft.setTextColor(L_LILAC);
+    else if (quality == "Restless")    tft.setTextColor(L_APRICOT);
+    else                               tft.setTextColor(L_CLOUD);
 
     tft.setCursor(10, Y_SLEEP_VAL);
     tft.println(quality);
@@ -220,7 +210,7 @@ static void tftDrawHighStressRandomQuoteAndPlayLocked() {
 
     tft.fillRect(0, Y_STRESS_QUOTE, 240, 40, ILI9341_BLACK);
     tft.setTextSize(1);
-    tft.setTextColor(ILI9341_RED);
+    tft.setTextColor(L_ROSE);
     tft.setCursor(10, Y_STRESS_QUOTE);
     tft.println(selectedQuote);
 
@@ -253,7 +243,7 @@ void tftUpdateStress(const String& level, float gsrValue) {
 
     // Handle the 'not worn' message returned by the GSR logic
     if (level == "Please wear finger straps") {
-        tft.setTextColor(ILI9341_RED);
+        tft.setTextColor(L_ROSE);
         tft.setTextSize(2);            // size 2 = 12px/char wide, 16px tall
         tft.setCursor(10, Y_STRESS_VAL);
         tft.println("Please wear");
@@ -262,32 +252,21 @@ void tftUpdateStress(const String& level, float gsrValue) {
     }
     else if (level == "High") {
         tft.setTextSize(2);
-        tft.setTextColor(ILI9341_RED);
+        tft.setTextColor(L_ROSE);
         tft.setCursor(10, Y_STRESS_VAL);
         tft.println("HIGH STRESS");
         tftDrawHighStressRandomQuoteAndPlayLocked();
     } else if (level == "Moderate") {
         tft.setTextSize(2);
-        tft.setTextColor(ILI9341_YELLOW);
+        tft.setTextColor(L_LEMON);
         tft.setCursor(10, Y_STRESS_VAL);
         tft.println("MODERATE");
     } else {
         tft.setTextSize(2);
-        tft.setTextColor(ILI9341_GREEN);
+        tft.setTextColor(L_MINT);
         tft.setCursor(10, Y_STRESS_VAL);
         tft.println("LOW / Calm");
     }
-    TFT_UNLOCK();
-}
-
-//Updates IP address on TFT when connected to WiFi
-void tftUpdateIP(const String& ip) {
-    TFT_LOCK();
-    tft.fillRect(10, Y_IP, 230, 20, ILI9341_BLACK);
-    tft.setTextColor(ILI9341_WHITE);
-    tft.setTextSize(2);
-    tft.setCursor(10, Y_IP);
-    tft.print("IP:" + ip);
     TFT_UNLOCK();
 }
 
@@ -299,7 +278,7 @@ void tftUpdateEmergency(bool active) {
     TFT_LOCK();
     tft.fillRect(0, Y_EMERGENCY, 240, 15, ILI9341_BLACK);
     if (active) {
-        tft.setTextColor(ILI9341_RED);
+        tft.setTextColor(L_ROSE);
         tft.setTextSize(2);
         tft.setCursor(10, Y_EMERGENCY);
         tft.print("!! EMERGENCY !!");
@@ -312,7 +291,7 @@ void tftUpdateSpeechStatus(const String& text) {
     TFT_LOCK();
     tft.fillRect(0, Y_SPEECH, 240, 15, ILI9341_BLACK);
     if (text.length() > 0) {
-        tft.setTextColor(ILI9341_WHITE);
+        tft.setTextColor(L_CLOUD);
         tft.setTextSize(1);
         tft.setCursor(10, Y_SPEECH);
         tft.print("Voice: " + text.substring(0, 30));
@@ -325,7 +304,7 @@ void tftShowListening(bool active) {
     TFT_LOCK();
     tft.fillRect(0, Y_SPEECH, 240, 15, ILI9341_BLACK);
     if (active) {
-        tft.setTextColor(ILI9341_CYAN);
+        tft.setTextColor(L_AQUA);
         tft.setTextSize(1);
         tft.setCursor(10, Y_SPEECH);
         tft.print("Listening...");

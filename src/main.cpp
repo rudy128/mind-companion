@@ -205,11 +205,7 @@ void setup() {
     tftDrawDashboardLabels();
     tftUpdateStress("--", 0);
 
-    if (wifiConnect()) {
-        tftUpdateIP(wifiGetIP());
-    } else {
-        tftUpdateIP("No WiFi");
-    }
+    wifiConnect();
 
     // ── Camera ───────────────────────────────────────────
     hasCamera = cameraInit();
@@ -597,10 +593,6 @@ void loop() {
 
         // ── MPU / Motion ──────────────────────────────────
         if (hasMPU) {
-            int dispX = (int)mpuGetAccelX();
-            int dispY = (int)mpuGetAccelY();
-            int dispZ = (int)mpuGetAccelZ();
-            tftUpdateMPU(dispX, dispY, dispZ); // change-guarded inside
             xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
             dashState.accelX      = mpuGetAccelX();
             dashState.accelY      = mpuGetAccelY();

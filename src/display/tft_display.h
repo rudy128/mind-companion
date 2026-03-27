@@ -14,18 +14,17 @@ void tftInit();
 // Show startup screen with system info
 void tftShowBootScreen();
 
-// Draw fixed labels (MPU, Heart, Sleep, Stress)
+// Draw title + section labels (Heart, Temp, Stress, Sleep, Voice)
 void tftDrawDashboardLabels();
 
 // Update individual sections (only updates if value changed)
 void tftUpdateTime(const char* timeStr);
 void tftUpdateHeartRate(int bpm, bool fingerPresent);
-void tftUpdateMPU(int x, int y, int z);
+void tftUpdateTemperature(bool sensorOk, float celsius);
 void tftUpdateSleep(const String& quality);
 void tftUpdateStress(const String& level, float gsrValue);
 // While stress is High: new random quote from AUDIO_QUOTE_MAP on TFT + matching audio (call e.g. every 30s).
 void tftHighStressRefreshRandomQuote();
-void tftUpdateIP(const String& ip);
 void tftUpdateEmergency(bool active);
 void tftUpdateSpeechStatus(const String& text);
 void tftShowListening(bool active);
@@ -34,4 +33,4 @@ void tftShowListening(bool active);
 
 Adafruit_ILI9341& tftGetDisplay();
 
-#endif 
+#endif // TFT_DISPLAY_H
