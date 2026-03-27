@@ -11,8 +11,8 @@
 // Setup the TFT display — call this first in setup()
 void tftInit();
 
-// Show startup screen with system info
-void tftShowBootScreen();
+// Boot splash: M.I.N.D. COMPANION + WiFi IP (ip e.g. "192.168.1.4" or "No WiFi")
+void tftShowBootScreen(const String& ipLine);
 
 // Draw title + section labels (Heart, Temp, Stress, Sleep, Voice)
 void tftDrawDashboardLabels();

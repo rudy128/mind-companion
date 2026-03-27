@@ -9,7 +9,6 @@
 #include "../network/logger.h"
 #include <vector>
 #include <string>
-#include <cmath>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -32,6 +31,7 @@ static const uint16_t L_CLOUD   = rgb565(235, 238, 245);  // soft white
 static const uint16_t L_ROSE    = rgb565(255, 175, 185); // light coral / was red
 static const uint16_t L_MINT    = rgb565(165, 245, 205); // light mint / was green
 static const uint16_t L_LEMON   = rgb565(255, 245, 190); // light yellow
+static const uint16_t L_TITLE_YELLOW = rgb565(255, 235, 145); // M.I.N.D. title — always this on main + boot
 static const uint16_t L_AQUA    = rgb565(150, 235, 255); // light cyan
 static const uint16_t L_SKY     = rgb565(165, 215, 255); // Deep Sleep — pale sky (not dark blue)
 static const uint16_t L_LILAC   = rgb565(225, 195, 255); // Light Sleep
@@ -44,20 +44,25 @@ static bool    prevFinger     = false;
 static String  prevSleep      = "";
 static String  prevStress     = "";
 static bool    prevEmergency  = false;
+static int     prevTempKey    = -99999;  // sensorOk ? tenths °C : -1
 
 // ============ Layout Positions ============
-// Y positions (compact layout — no MPU / IP rows)
-#define Y_TIME         5
-#define Y_HR_LABEL     22
-#define Y_HR_VAL       27
-#define Y_HR_STATUS    57
-#define Y_SLEEP_LABEL  88
-#define Y_SLEEP_VAL    108
-#define Y_STRESS_LABEL 138
-#define Y_STRESS_VAL   163
-#define Y_STRESS_QUOTE 188
-#define Y_EMERGENCY    218
-#define Y_SPEECH       238
+// Top → bottom: title, Heart, Temp, Stress, Sleep, Emergency, Voice
+#define Y_TITLE        4
+#define Y_TIME         4
+#define Y_HR_LABEL     28
+#define Y_HR_VAL       33
+#define Y_HR_STATUS    63
+#define Y_TEMP_LABEL   86
+#define Y_TEMP_VAL     91
+#define Y_STRESS_LABEL 114
+#define Y_STRESS_VAL   138
+#define Y_STRESS_QUOTE 163
+#define Y_SLEEP_LABEL  205
+#define Y_SLEEP_VAL    225
+#define Y_EMERGENCY    248
+#define Y_VOICE_LABEL  268
+#define Y_VOICE_TEXT   284
 
 //Initialize TFT
 void tftInit() {
@@ -71,62 +76,82 @@ void tftInit() {
     Serial.println("[TFT] Display initialized");
 }
 
-//Show Boot Screen
-void tftShowBootScreen() {
+// Boot splash — M.I.N.D. COMPANION + IP; light palette (yellow title, cyan/mint body)
+void tftShowBootScreen(const String& ipLine) {
     TFT_LOCK();
     tft.fillScreen(ILI9341_BLACK);
 
-    tft.setTextColor(L_CLOUD);
-    tft.setTextSize(4);
-    tft.setCursor(35, 60);
+    tft.setTextColor(L_TITLE_YELLOW);
+    tft.setTextSize(3);
+    tft.setCursor(10, 48);
     tft.println("M.I.N.D.");
+    tft.setCursor(10, 82);
+    tft.println("COMPANION");
 
     tft.setTextSize(2);
-    tft.setCursor(40, 110);
-    tft.println("COMPANION");
+    tft.setTextColor(L_AQUA);
+    tft.setCursor(10, 128);
+    tft.print("IP ");
+    tft.println(ipLine);
 
     tft.setTextSize(1);
     tft.setTextColor(L_MINT);
-    tft.setCursor(20, 150);
+    tft.setCursor(16, 162);
     tft.println("Heart: MAX30102");
-    tft.setCursor(20, 168);
+    tft.setTextColor(L_AQUA);
+    tft.setCursor(16, 178);
     tft.println("Stress: GSR Sensor");
-    tft.setCursor(20, 186);
+    tft.setTextColor(L_MINT);
+    tft.setCursor(16, 194);
     tft.println("Clock:  DS3231 RTC");
-    tft.setCursor(20, 204);
+    tft.setTextColor(L_AQUA);
+    tft.setCursor(16, 210);
     tft.println("Mic:    INMP441");
-    tft.setCursor(20, 222);
+    tft.setTextColor(L_MINT);
+    tft.setCursor(16, 226);
     tft.println("Camera: OV2640");
 
     tft.setTextColor(L_AQUA);
-    tft.setCursor(30, 260);
-    tft.println("Initializing systems...");
+    tft.setCursor(24, 258);
+    tft.println("Starting...");
     TFT_UNLOCK();
 
     delay(2500);
 }
 
-//Draw main dashboard labels (Heart, Sleep, Stress) — called once at startup
+//Draw main dashboard — title + section labels (Heart, Temp, Stress, Sleep, Voice)
 void tftDrawDashboardLabels() {
     TFT_LOCK();
     tft.fillScreen(ILI9341_BLACK);
-    tft.setTextSize(2);
+    tft.setTextColor(L_TITLE_YELLOW);
+    tft.setTextSize(1);
+    tft.setCursor(10, Y_TITLE);
+    tft.print("M.I.N.D. Companion");
 
+    tft.setTextSize(2);
     tft.setTextColor(L_ROSE);
     tft.setCursor(10, Y_HR_LABEL);
     tft.println("Heart:");
+
+    tft.setTextColor(L_AQUA);
+    tft.setCursor(10, Y_TEMP_LABEL);
+    tft.println("Temp:");
+
+    tft.setTextColor(L_MINT);
+    tft.setCursor(10, Y_STRESS_LABEL);
+    tft.println("Stress:");
 
     tft.setTextColor(L_LEMON);
     tft.setCursor(10, Y_SLEEP_LABEL);
     tft.println("Sleep:");
 
-    tft.setTextColor(L_MINT);
-    tft.setCursor(10, Y_STRESS_LABEL);
-    tft.println("Mind:");
+    tft.setTextColor(L_CLOUD);
+    tft.setCursor(10, Y_VOICE_LABEL);
+    tft.println("Voice:");
     TFT_UNLOCK();
 
-    // Default heart rate display to show "not detected" until sensor reads something
     tftUpdateHeartRate(0, false);
+    tftUpdateTemperature(false, 0.f);
 }
 
 //Update time 
@@ -171,6 +196,33 @@ void tftUpdateHeartRate(int bpm, bool fingerPresent) {
     } else {
         tft.setTextColor(L_ROSE);
         tft.print("No Finger");
+    }
+    TFT_UNLOCK();
+}
+
+// Temperature — same as dashboard (one decimal + °C)
+void tftUpdateTemperature(bool sensorOk, float celsius) {
+    int key = -1;
+    if (sensorOk) {
+        float t = celsius * 10.f;
+        key = (int)(t + (t >= 0.f ? 0.5f : -0.5f));
+    }
+    if (key == prevTempKey) return;
+    prevTempKey = key;
+
+    TFT_LOCK();
+    tft.fillRect(80, Y_TEMP_VAL, 160, 22, ILI9341_BLACK);
+    tft.setTextColor(L_AQUA);
+    tft.setTextSize(2);
+    tft.setCursor(80, Y_TEMP_VAL);
+    if (sensorOk) {
+        tft.printf("%.1f", celsius);
+        tft.print((char)0xB0);
+        tft.print("C");
+    } else {
+        tft.print("--");
+        tft.print((char)0xB0);
+        tft.print("C");
     }
     TFT_UNLOCK();
 }
@@ -286,27 +338,26 @@ void tftUpdateEmergency(bool active) {
     TFT_UNLOCK();
 }
 
-//Updates speech transcription status on TFT
+// Speech line (label "Voice:" is static in tftDrawDashboardLabels)
 void tftUpdateSpeechStatus(const String& text) {
     TFT_LOCK();
-    tft.fillRect(0, Y_SPEECH, 240, 15, ILI9341_BLACK);
+    tft.fillRect(0, Y_VOICE_TEXT, 240, 16, ILI9341_BLACK);
     if (text.length() > 0) {
         tft.setTextColor(L_CLOUD);
         tft.setTextSize(1);
-        tft.setCursor(10, Y_SPEECH);
-        tft.print("Voice: " + text.substring(0, 30));
+        tft.setCursor(10, Y_VOICE_TEXT);
+        tft.print(text.substring(0, 36));
     }
     TFT_UNLOCK();
 }
 
-//Show "Listening..." on TFT when speech recognition is active
 void tftShowListening(bool active) {
     TFT_LOCK();
-    tft.fillRect(0, Y_SPEECH, 240, 15, ILI9341_BLACK);
+    tft.fillRect(0, Y_VOICE_TEXT, 240, 16, ILI9341_BLACK);
     if (active) {
         tft.setTextColor(L_AQUA);
         tft.setTextSize(1);
-        tft.setCursor(10, Y_SPEECH);
+        tft.setCursor(10, Y_VOICE_TEXT);
         tft.print("Listening...");
     }
     TFT_UNLOCK();

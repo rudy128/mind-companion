@@ -162,7 +162,8 @@ void setup() {
 
     // ── TFT Display ──────────────────────────────────────
     tftInit();
-    tftShowBootScreen();
+    wifiConnect();
+    tftShowBootScreen(wifiIsConnected() ? wifiGetIP() : String("No WiFi"));
 
     // ── I2C bus (shared by MPU6050, MAX30102, RTC) ───────
     Wire.begin(I2C_SDA, I2C_SCL);
@@ -204,8 +205,6 @@ void setup() {
     // ── WiFi ─────────────────────────────────────────────
     tftDrawDashboardLabels();
     tftUpdateStress("--", 0);
-
-    wifiConnect();
 
     // ── Camera ───────────────────────────────────────────
     hasCamera = cameraInit();
@@ -590,6 +589,8 @@ void loop() {
                 xSemaphoreGive(actuatorMutex);
             }
         }
+
+        tftUpdateTemperature(hasMPU, hasMPU ? mpuGetTemperature() : 0.f);
 
         // ── MPU / Motion ──────────────────────────────────
         if (hasMPU) {
