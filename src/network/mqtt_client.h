@@ -30,9 +30,6 @@ void mqttInit(MqttDashState* state);
 
 // ── Send data manually ──
 
-// Send current data immediately
-void mqttPublishState();
-
 // Send emergency alert
 void mqttPublishAlert(bool active);
 

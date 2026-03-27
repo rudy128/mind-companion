@@ -7,7 +7,6 @@
 #include "camera.h"
 #include "../config.h"
 #include "esp_http_server.h"
-#include "esp_timer.h"
 
 // ── MJPEG streaming settings ─────────────────────────────
 static const char* STREAM_CONTENT_TYPE =

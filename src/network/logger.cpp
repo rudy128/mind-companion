@@ -36,10 +36,6 @@ void logInit(LogLevel level) {
     Serial.println("[LOG] Logger initialized (Serial only)");
 }
 
-void logSetLevel(LogLevel level) {
-    minLevel = level;
-}
-
 void logWrite(LogLevel level, const char* tag, const char* fmt, ...) {
     if (level < minLevel) return;
 

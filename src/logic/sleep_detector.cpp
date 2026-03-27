@@ -74,8 +74,3 @@ void sleepDetectorFeed(float dx, float dy, float dz, int activeAxes) {
 String sleepDetectorGetQuality() {
     return quality;
 }
-
-// Check if user is sleeping
-bool sleepDetectorIsSleeping() {
-    return (quality == "Deep Sleep" || quality == "Light Sleep");
-}

@@ -64,24 +64,6 @@ static void _uninstallDriver() {
     _driverInstalled = false;
 }
 
-// Initialize microphone
-void micInit() {
-    LOG_INFO("MIC", "Initializing I2S #%d (RX) — SCK=%d WS=%d SD=%d rate=%d",
-             (int)MIC_I2S_PORT, MIC_I2S_SCK, MIC_I2S_WS, MIC_I2S_SD, MIC_SAMPLE_RATE);
-
-    // Test if I2S works
-    if (_installDriver()) {
-        int16_t dummy[64];
-        size_t n = 0;
-        i2s_read(MIC_I2S_PORT, dummy, sizeof(dummy), &n, pdMS_TO_TICKS(200));
-        LOG_INFO("MIC", "I2S #%d RX verified (%u bytes in probe read)", (int)MIC_I2S_PORT, n);
-        _uninstallDriver();   
-    } else {
-        LOG_ERROR("MIC", "I2S init FAILED — microphone will not work");
-    }
-}
-
-// Record audio
 size_t micRecord(int16_t* buffer, size_t bufferSize) {
     _uninstallDriver();   // ensure clean slate
     if (!_installDriver()) {
@@ -122,21 +104,4 @@ size_t micRecord(int16_t* buffer, size_t bufferSize) {
     _uninstallDriver();
 
     return bytesRead;
-}
-
-// Create WAV file header
-void micCreateWavHeader(uint8_t* wav, size_t pcmSize, uint32_t sampleRate) {
-    uint32_t fileSize = pcmSize + 36;
-    memcpy(wav,      "RIFF", 4);
-    *(uint32_t*)(wav + 4)  = fileSize;
-    memcpy(wav + 8,  "WAVEfmt ", 8);
-    *(uint32_t*)(wav + 16) = 16;              // header size
-    *(uint16_t*)(wav + 20) = 1;               // PCM format
-    *(uint16_t*)(wav + 22) = 1;               // mono
-    *(uint32_t*)(wav + 24) = sampleRate;
-    *(uint32_t*)(wav + 28) = sampleRate * 2;  // byte rate (16-bit mono)
-    *(uint16_t*)(wav + 32) = 2;               
-    *(uint16_t*)(wav + 34) = 16;              // bits per sample
-    memcpy(wav + 36, "data", 4);
-    *(uint32_t*)(wav + 40) = pcmSize;
 }

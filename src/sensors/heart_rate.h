@@ -14,8 +14,7 @@ bool heartRateInit();
 void heartRateUpdate();
 
 float  heartRateGetBPM();        // rolling-average BPM (0 if no finger / not enough data)
-long   heartRateGetIR();         // raw IR value from sensor
-bool   heartRateFingerPresent(); // Check if finger is on sensor
-bool   heartRateIsAbnormal();    // Check if BPM is too high or too low
+bool   heartRateFingerPresent(); // true if IR > 10000 (finger on sensor)
+bool   heartRateIsAbnormal();    // true if BPM outside HR_ABNORMAL_LOW..HR_ABNORMAL_HIGH
 
 #endif 

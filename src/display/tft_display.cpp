@@ -285,7 +285,7 @@ void tftHighStressRefreshRandomQuote() {
     TFT_UNLOCK();
 }
 
-void tftUpdateStress(const String& level, float gsrValue) {
+void tftUpdateStress(const String& level) {
     if (level == prevStress) return;
     prevStress = level;
 
@@ -361,8 +361,4 @@ void tftShowListening(bool active) {
         tft.print("Listening...");
     }
     TFT_UNLOCK();
-}
-
-Adafruit_ILI9341& tftGetDisplay() {
-    return tft;
 }

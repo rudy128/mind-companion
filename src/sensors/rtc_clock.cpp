@@ -4,6 +4,7 @@
 // =====================================================================
 #include "rtc_clock.h"
 #include "../config.h"
+#include <RTClib.h>
 
 static RTC_DS3231 rtc;
 
@@ -75,19 +76,10 @@ bool rtcInit() {
         Serial.println("[RTC] ERROR: DS3231 not found!");
         return false;
     }
-
-    // Uncomment the next line ONCE to set RTC to compile time, then re-comment
-    // rtcSetToCompileTime();
     Serial.println("[RTC] DS3231 OK");
     return true;
 }
 
-// Get current date and time
-DateTime rtcGetNow() {
-    return rtc.now();
-}
-
-// Format time as HH:MM:SS (with optional DST adjustment)
 void rtcFormatTime(char* buf, size_t len) {
     DateTime now = rtc.now();
     
@@ -99,13 +91,4 @@ void rtcFormatTime(char* buf, size_t len) {
     snprintf(buf, len, "%02d:%02d:%02d", adj.hour(), adj.minute(), adj.second());
 }
 
-// Get individual time components
-uint8_t rtcGetHour()   { return rtc.now().hour(); }
-uint8_t rtcGetMinute() { return rtc.now().minute(); }
 uint8_t rtcGetSecond() { return rtc.now().second(); }
-
-// Set RTC to compile time (used once during setup)
-void rtcSetToCompileTime() {
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-    Serial.println("[RTC] Time set to compile time");
-}

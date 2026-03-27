@@ -4,7 +4,6 @@
 // =============================================================
 #include "heart_rate.h"
 #include "../config.h"
-#include "../network/logger.h"
 #include <Wire.h>
 #include "MAX30105.h"
 #include "heartRate.h"
@@ -132,11 +131,6 @@ void heartRateUpdate() {
 
 // Get current BPM
 float heartRateGetBPM()        { return averageBPM; }
-
-// Get raw IR value
-long  heartRateGetIR()         { return irValue; }
-
-// Check is finger is placed
 bool  heartRateFingerPresent() { return fingerOn; }
 
 // Check if BPM is abnormal

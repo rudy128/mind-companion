@@ -17,20 +17,12 @@ void  mpuUpdate();
 float mpuGetAccelX();
 float mpuGetAccelY();
 float mpuGetAccelZ();
-
-// Get total acceleration (sqrt(x²+y²+z²))
-float mpuGetAccelMagnitude(); 
-
-// Get temperature from sensor
 float mpuGetTemperature();
 
 // Check if movement exceeds a given threshold
 bool  mpuMovementDetected(float threshold);
 
-// Get change in total acceleration since last update
-float mpuGetMovementDelta();
-
-// Get change in each axis (absolute difference)
+// Per-axis absolute deltas (current vs previous reading)
 float mpuGetDeltaX();
 float mpuGetDeltaY();
 float mpuGetDeltaZ();

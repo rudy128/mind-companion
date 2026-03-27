@@ -52,13 +52,10 @@
 // ========================= Emergency Button =========================
 #define BUTTON_PIN              41       // active LOW with internal pull-up
 #define DOUBLE_PRESS_WINDOW_MS  1000     // 1 second window for double-press (human responsive)
-#define LONG_PRESS_MS           1500     // hold time for long press (future use)
 #define DEBOUNCE_MS             80       // button debounce time
 
 // ========================= LED Strip (Breathing Pattern) =========================
 #define LED_PIN            20       // PWM output via PNP transistor
-#define LED_PWM_FREQ       5000
-#define LED_PWM_RESOLUTION 8        // 8-bit → 0-255
 
 // ========================= Vibration Motor =========================
 #define VIBRATION_PIN      46
@@ -71,15 +68,6 @@
 #define MIC_I2S_SD         19
 #define MIC_SAMPLE_RATE    16000
 #define MIC_RECORD_SECONDS 3
-
-// ========================= Speaker (MAX98357A via I2S #0 TX) =========================
-// NOTE: Time-sliced with mic — ESP32-audioI2S uses I2S_NUM_0
-#define SPK_I2S_PORT       I2S_NUM_0
-#define SPK_I2S_BCLK       21
-#define SPK_I2S_LRC        0
-#define SPK_I2S_DIN        14
-#define SPK_SAMPLE_RATE    22050
-#define SPK_SD_PIN         -1 
 
 // ========================= Camera (ESP32-S3 built-in OV2640) =========================
 #define CAM_PIN_PWDN       -1
@@ -99,23 +87,10 @@
 #define CAM_PIN_HREF       7
 #define CAM_PIN_PCLK       13
 
-// ========================= Timing Intervals (ms) =========================
-#define INTERVAL_GSR_CHECK       1000UL       // GSR stress reading — 1s
-#define INTERVAL_MPU_DISPLAY     1000UL       // MPU accel on TFT — 1s
-#define INTERVAL_SPEECH_RECOG    15000UL      // speech recognition cycle
-#define INTERVAL_VIBRATION_HOUR  60000UL      // 1 minute vibration reminder
-#define INTERVAL_AWAKE_NUDGE     60000UL      // vibrate + open camera every 1 min while awake
-#define INTERVAL_SLEEP_WINDOW    30000UL      // sleep quality evaluation window
-#define INTERVAL_DASHBOARD_POLL  2000UL       // web dashboard AJAX poll (JS-side uses 1000ms now)
-#define INTERVAL_DISPLAY_UPDATE  1000UL       // RTC time on TFT
-
 // ========================= Thresholds =========================
 #define MOVEMENT_THRESHOLD       0.2f   // g-force delta for "movement detected"
-#define SLEEP_MOVEMENT_DEEP      0.3f   // below this = deep sleep
-#define SLEEP_MOVEMENT_LIGHT     0.8f   // below this = light sleep; above = restless
 #define HR_ABNORMAL_HIGH         150    // BPM above this triggers breathing LED
 #define HR_ABNORMAL_LOW          50     // BPM below this triggers breathing LED
-#define NO_MOVEMENT_EMERGENCY_MS 40000  // 40 seconds → speaker alarm
 //#define GSR_HIGH_THRESHOLD       24000.0f
 //#define GSR_MODERATE_LOW         14000.0f
 //#define GSR_LOW_THRESHOLD         7900.0f

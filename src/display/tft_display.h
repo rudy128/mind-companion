@@ -6,7 +6,6 @@
 #define TFT_DISPLAY_H
 
 #include <Arduino.h>
-#include <Adafruit_ILI9341.h>
 
 // Setup the TFT display — call this first in setup()
 void tftInit();
@@ -22,15 +21,11 @@ void tftUpdateTime(const char* timeStr);
 void tftUpdateHeartRate(int bpm, bool fingerPresent);
 void tftUpdateTemperature(bool sensorOk, float celsius);
 void tftUpdateSleep(const String& quality);
-void tftUpdateStress(const String& level, float gsrValue);
+void tftUpdateStress(const String& level);
 // While stress is High: new random quote from AUDIO_QUOTE_MAP on TFT + matching audio (call e.g. every 30s).
 void tftHighStressRefreshRandomQuote();
 void tftUpdateEmergency(bool active);
 void tftUpdateSpeechStatus(const String& text);
 void tftShowListening(bool active);
-
-
-
-Adafruit_ILI9341& tftGetDisplay();
 
 #endif // TFT_DISPLAY_H

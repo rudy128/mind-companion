@@ -12,7 +12,6 @@ const BPM_OFFSET       = 28;   // Add to BPM from MQTT only (dashboard) to align
 let hrHistory     = [];
 let sleepHistory  = [];
 let stressHistory = [];
-let connected     = false;
 let camAutoOpened = false;
 
 const SLEEP_MAP  = { "Deep Sleep": 0, "Light Sleep": 1, "Awake": 2 };
@@ -654,7 +653,6 @@ function connectSSE() {
   const es = new EventSource("/stream");
 
   es.onopen = () => {
-    connected = true;
     setConnectionState("connected");
     console.log("[SSE] Connected");
     if (sensorGrid.classList.contains("hidden")) {
@@ -676,7 +674,6 @@ function connectSSE() {
   });
 
   es.onerror = () => {
-    connected = false;
     setConnectionState("disconnected");
     console.warn("[SSE] Disconnected — browser will retry automatically");
   };

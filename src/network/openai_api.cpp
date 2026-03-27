@@ -4,9 +4,7 @@
 // =============================================================
 #include "openai_api.h"
 #include "../config.h"
-#include "../network/wifi_manager.h"
 #include <WiFiClientSecure.h>
-#include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <esp_task_wdt.h>
 

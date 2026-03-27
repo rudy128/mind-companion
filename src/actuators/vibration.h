@@ -13,12 +13,6 @@ void vibrationInit();
 void vibrationPulse(unsigned long durationMs = 1000);  
 
 // Call every loop(); returns true while active
-bool vibrationUpdate();  
+bool vibrationUpdate();
 
-// Turn vibration motor on immediately
-void vibrationOn();
-
-// Turn vibration motor off immediately
-void vibrationOff();
-
-#endif 
+#endif

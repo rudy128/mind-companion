@@ -5,7 +5,6 @@
 #include "wifi_manager.h"
 #include "../config.h"
 #include <WiFi.h>
-#include <esp_wifi.h>
 
 // Count how many times network failed in a row
 static int _consecutiveFailures = 0;

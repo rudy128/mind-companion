@@ -7,7 +7,7 @@
 
 #include <Arduino.h>
 
-// List of all possible voice commands 
+// List of all possible voice commands
 enum VoiceCommand {
     CMD_NONE,
     CMD_BREATHING_PATTERN,
@@ -20,10 +20,7 @@ enum VoiceCommand {
 // Check text and return the matched command
 VoiceCommand commandParse(const String& text);
 
-// Convert command to readable text 
+// Convert command to readable text
 String commandToString(VoiceCommand cmd);
 
-// Run the action based on the command
-void commandExecute(VoiceCommand cmd);
-
-#endif 
+#endif

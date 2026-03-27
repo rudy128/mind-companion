@@ -17,7 +17,6 @@
 #include "mqtt_client.h"
 #include "../config.h"
 #include "logger.h"
-#include "wifi_manager.h"
 
 #include <WiFi.h>
 #include <PubSubClient.h>
@@ -249,12 +248,7 @@ void mqttInit(MqttDashState* state) {
     );
 }
 
-// Force send data 
-void mqttPublishState() {
-    _publishState();
-}
-
-// Request alert 
+// Request alert
 void mqttPublishAlert(bool active) {
     _alertValue   = active;
     _alertPending = true;

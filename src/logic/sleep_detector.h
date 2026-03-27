@@ -14,8 +14,7 @@ void   sleepDetectorInit();
 // activeAxes = how many axes moved above threshold
 void   sleepDetectorFeed(float dx, float dy, float dz, int activeAxes);
 
-// Get current sleep quality 
+// Get current sleep quality
 String sleepDetectorGetQuality();    // "Deep Sleep", "Light Sleep", "Awake"
-bool   sleepDetectorIsSleeping();    // true if Deep or Light sleep
 
-#endif 
+#endif

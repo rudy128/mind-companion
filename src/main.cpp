@@ -196,7 +196,6 @@ void setup() {
     // ── Microphone ───────────────────────────────────────
     // DON'T init mic here — it conflicts with Audio library on I2S0
     // Mic driver is installed on-demand during recording (time-sliced)
-    // micInit();  // REMOVED - causes I2S conflict at startup
     LOG_INFO("MIC", "Microphone ready (on-demand I2S, time-sliced with speaker)");
 
     // ── Sleep Detector ───────────────────────────────────
@@ -204,7 +203,7 @@ void setup() {
 
     // ── WiFi ─────────────────────────────────────────────
     tftDrawDashboardLabels();
-    tftUpdateStress("--", 0);
+    tftUpdateStress("--");
 
     // ── Camera ───────────────────────────────────────────
     hasCamera = cameraInit();
@@ -715,7 +714,7 @@ void loop() {
         static String        lastStressForHighQuote = "";
         bool enteredHigh = (stress == "High" && lastStressForHighQuote != "High");
 
-        tftUpdateStress(stress, conductance);
+        tftUpdateStress(stress);
 
         if (stress == "High") {
             if (enteredHigh) {

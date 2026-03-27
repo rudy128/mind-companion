@@ -9,6 +9,9 @@ static bool          _vibActive   = false;     // true if currently vibrating
 static unsigned long _vibStartMs  = 0;        // when the current vibration started
 static unsigned long _vibDuration = 0;       // duartion of the current vibration in ms
 
+static void vibrationOn();
+static void vibrationOff();
+
 //Initializing vibration motor pin
 void vibrationInit() {
     pinMode(VIBRATION_PIN, OUTPUT);
@@ -36,12 +39,10 @@ bool vibrationUpdate() {
 }
 
 
-//Turn vibration motor on immediately
-void vibrationOn() {
+static void vibrationOn() {
     digitalWrite(VIBRATION_PIN, HIGH);
 }
 
-//Turn vibration motor off immediately
-void vibrationOff() {
+static void vibrationOff() {
     digitalWrite(VIBRATION_PIN, LOW);
 }
