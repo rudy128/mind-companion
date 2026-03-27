@@ -337,15 +337,6 @@ static void speechTask(void* param) {
                         breathingEndMs = millis() + 35000UL;
                         LOG_INFO("SPEECH", "Voice breathing pattern — will run for 35 s");
                         break;
-                    case CMD_HELP_ME:
-                    case CMD_EMERGENCY:
-                        emergencyFlag = true;
-                        tftUpdateEmergency(true);
-                        xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
-                        dashState.emergencyActive = true;
-                        xSemaphoreGive(mqttDashMutex);
-                        mqttPublishAlert(true);
-                        break;
                     case CMD_STOP:
                         ledBreathingStop();
                         emergencyFlag = false;
