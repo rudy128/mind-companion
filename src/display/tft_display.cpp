@@ -4,6 +4,7 @@
 // for various sections (time, heart rate, sleep, stress, emergency, listening status).
 // ==========================================================================================
 #include "tft_display.h"
+#include <Adafruit_ILI9341.h>
 #include "../config.h"
 #include "../actuators/audio_quotes.h"
 #include "../network/logger.h"
