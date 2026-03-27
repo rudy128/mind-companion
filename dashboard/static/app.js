@@ -155,10 +155,10 @@ function drawAxisChart(canvas, data, config) {
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, w, h);
 
-  const left   = config.leftPad || 52;
+  const left   = config.leftPad || 58;
   const right  = 16;
-  const top    = 14;
-  const bottom = 24;
+  const top    = 16;
+  const bottom = 28;
   const plotW  = w - left - right;
   const plotH  = h - top - bottom;
 
@@ -172,7 +172,7 @@ function drawAxisChart(canvas, data, config) {
   const toX = i => left + (data.length > 1 ? (i / (data.length - 1)) * plotW : 0);
 
   // Grid lines + Y-axis labels
-  ctx.font = "10px 'JetBrains Mono', monospace";
+  ctx.font = "11px 'JetBrains Mono', monospace";
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
 
@@ -200,7 +200,7 @@ function drawAxisChart(canvas, data, config) {
   ctx.stroke();
 
   // X-axis ticks (every 10 samples)
-  ctx.font = "9px 'JetBrains Mono', monospace";
+  ctx.font = "10px 'JetBrains Mono', monospace";
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   ctx.fillStyle = "rgba(161,161,170,0.5)";
@@ -365,7 +365,7 @@ function drawHrChart() {
     yMax,
     yLabels: labels,
     stepped: false,
-    leftPad: 48,
+    leftPad: 54,
   });
 }
 
@@ -381,7 +381,7 @@ function drawSleepChart() {
       { value: 2, label: "Awake" },
     ],
     stepped: true,
-    leftPad: 52,
+    leftPad: 56,
   });
 }
 
@@ -398,7 +398,7 @@ function drawStressChart() {
       { value: 2,  label: "High" },
     ],
     stepped: true,
-    leftPad: 52,
+    leftPad: 56,
   });
 }
 
