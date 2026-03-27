@@ -91,6 +91,12 @@ static unsigned long deepSleepStartTime = 0;
 // non-zero = millis() timestamp at which the voice session expires
 static unsigned long breathingEndMs = 0;
 
+// Voice "stop" turns LEDs off, but the 1 Hz abnormal-HR logic would immediately
+// call ledBreathingStart() again while HR is still "abnormal". Suppress that
+// auto-start until this deadline (millis), or until user / dashboard starts breathing.
+static unsigned long autoBreathingSuppressUntil = 0;
+static const unsigned long AUTO_BREATH_SUPPRESS_MS = 180000UL;  // 3 minutes
+
 // ─── Awake-nudge camera window ────────────────────────────────
 // Set to millis()+20000 when the awake nudge fires.
 // dashState.cameraOpen is driven by this value every 1-second tick.
@@ -331,6 +337,7 @@ static void speechTask(void* param) {
                 xSemaphoreTake(actuatorMutex, portMAX_DELAY);
                 switch (cmd) {
                     case CMD_BREATHING_PATTERN:
+                        autoBreathingSuppressUntil = 0;
                         // Start the continuous fade worker; the orchestration
                         // timer (breathingEndMs) will stop it after 35 seconds.
                         ledBreathingStart();
@@ -339,12 +346,8 @@ static void speechTask(void* param) {
                         break;
                     case CMD_STOP:
                         ledBreathingStop();
-                        emergencyFlag = false;
-                        tftUpdateEmergency(false);
-                        xSemaphoreTake(mqttDashMutex, portMAX_DELAY);
-                        dashState.emergencyActive = false;
-                        xSemaphoreGive(mqttDashMutex);
-                        mqttPublishAlert(false);
+                        breathingEndMs = 0;
+                        autoBreathingSuppressUntil = millis() + AUTO_BREATH_SUPPRESS_MS;
                         break;
                     default:
                         break;
@@ -560,14 +563,19 @@ void loop() {
 
             // ── Auto-start breathing on abnormal HR ─────────────────
             // Don't override an active voice-triggered session (breathingEndMs > 0).
+            // Don't restart right after voice "stop" (autoBreathingSuppressUntil).
             if (heartRateIsAbnormal()) {
-                xSemaphoreTake(actuatorMutex, portMAX_DELAY);
-                if (!ledBreathingIsActive()) {
-                    ledBreathingStart();   // indefinite — no end time set
-                    breathingEndMs = 0;
-                    LOG_WARN("MAIN", "Abnormal HR %d bpm — starting breathing LED", bpmRaw);
+                if (millis() < autoBreathingSuppressUntil) {
+                    // user explicitly stopped; hold off auto breathing until suppress expires
+                } else {
+                    xSemaphoreTake(actuatorMutex, portMAX_DELAY);
+                    if (!ledBreathingIsActive()) {
+                        ledBreathingStart();   // indefinite — no end time set
+                        breathingEndMs = 0;
+                        LOG_WARN("MAIN", "Abnormal HR %d bpm — starting breathing LED", bpmRaw);
+                    }
+                    xSemaphoreGive(actuatorMutex);
                 }
-                xSemaphoreGive(actuatorMutex);
             } else {
                 // HR is normal: stop only if this is an HR-triggered (indefinite)
                 // session. Leave a voice-triggered session (breathingEndMs > 0) running.
@@ -771,6 +779,7 @@ static void onMqttCommand(const String& cmd) {
 
     xSemaphoreTake(actuatorMutex, portMAX_DELAY);
     if (cmd == "breathe") {
+        autoBreathingSuppressUntil = 0;
         ledBreathingStart();
         breathingEndMs = millis() + 35000UL;
         LOG_INFO("MQTT_CMD", "Breathing LED started — 35 s session");
