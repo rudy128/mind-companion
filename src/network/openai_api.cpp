@@ -1,5 +1,6 @@
 // =============================================================
-// OpenAI API — Whisper STT (Speech-to-Text) Implementation
+// OpenAI API — Speech to Text
+// Sends recorded audio to OpenAI and gets text back.
 // =============================================================
 #include "openai_api.h"
 #include "../config.h"
@@ -9,17 +10,12 @@
 #include <ArduinoJson.h>
 #include <esp_task_wdt.h>
 
-// =============================================================
-//  openaiTranscribe — streaming upload (no 64 KB malloc copy)
-//
-//  Creates a FRESH WiFiClientSecure each call to avoid the
-//  "Bad file number" (errno 9) bug from reusing a stopped client.
-//  The ~40KB TLS allocation is freed when the function returns.
-// =============================================================
+// Convert audio to text using OpenAI Whisper
 String openaiTranscribe(int16_t* pcmData, size_t pcmBytes) {
+    //Create new secure client (avoid connection errors)
     WiFiClientSecure client;
     client.setInsecure();
-    client.setTimeout(10);    // 10-second TLS handshake timeout
+    client.setTimeout(10);    
 
     Serial.println("[AI] Connecting to api.openai.com...");
     if (!client.connect("api.openai.com", 443)) {
@@ -27,7 +23,7 @@ String openaiTranscribe(int16_t* pcmData, size_t pcmBytes) {
         return "";
     }
 
-    // Build the 44-byte WAV header on the stack
+    // Create WAV header (needed for audio file)
     uint8_t wavHeader[44];
     {
         uint32_t fileSize = pcmBytes + 36;
@@ -58,21 +54,21 @@ String openaiTranscribe(int16_t* pcmData, size_t pcmBytes) {
 
     size_t contentLength = bodyStart.length() + wavTotalSize + bodyEnd.length();
 
-    // HTTP headers
+    // Send HTTP headers
     client.print("POST /v1/audio/transcriptions HTTP/1.1\r\n");
     client.print("Host: api.openai.com\r\n");
     client.print("Authorization: Bearer " + String(OPENAI_API_KEY) + "\r\n");
     client.print("Content-Type: multipart/form-data; boundary=" + boundary + "\r\n");
     client.print("Content-Length: " + String(contentLength) + "\r\n\r\n");
 
-    // Body — multipart preamble
+    // Send body
     client.print(bodyStart);
 
-    // WAV header (44 bytes)
+    // Send WAV header (44 bytes)
     client.write(wavHeader, 44);
     esp_task_wdt_reset();
 
-    // Stream PCM data directly from audioBuffer — no copy needed
+    // Send audio data in small chunks
     const size_t chunkSize = 1024;
     const uint8_t* rawBytes = (const uint8_t*)pcmData;
     for (size_t i = 0; i < pcmBytes; i += chunkSize) {
@@ -82,10 +78,10 @@ String openaiTranscribe(int16_t* pcmData, size_t pcmBytes) {
         vTaskDelay(1);
     }
 
-    // Multipart epilogue
+    // End of body
     client.print(bodyEnd);
 
-    // Read response in chunks (not char-by-char which is O(n²) on String)
+    // Read response in chunks
     String response;
     response.reserve(512);
     uint8_t readBuf[256];
@@ -105,21 +101,21 @@ String openaiTranscribe(int16_t* pcmData, size_t pcmBytes) {
     }
     client.stop();
 
-    // Debug: print raw response
+    // Debug log
     Serial.println("[AI] Response length: " + String(response.length()));
     if (response.length() < 500) {
         Serial.println("[AI] Full response: " + response);
     }
 
-    // Extract JSON from response (after \r\n\r\n)
+    // Extract JSON from response 
     int jsonStart = response.indexOf("\r\n\r\n");
     if (jsonStart < 0) jsonStart = 0; else jsonStart += 4;
     String jsonBody = response.substring(jsonStart);
 
-    // In case of chunked encoding, find the JSON object
     int braceStart = jsonBody.indexOf('{');
     if (braceStart > 0) jsonBody = jsonBody.substring(braceStart);
 
+    //Parse JSON
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, jsonBody);
     if (err) {
@@ -135,6 +131,7 @@ String openaiTranscribe(int16_t* pcmData, size_t pcmBytes) {
         return "";
     }
 
+    // Get text Result
     String text = doc["text"] | "";
     Serial.println("[AI] Transcription: " + text);
     return text;

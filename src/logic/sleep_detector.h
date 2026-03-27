@@ -1,5 +1,5 @@
 // =============================================================
-// Sleep Detector — Movement + Heart Rate + RTC Analysis
+// Sleep Detector — Movement + RTC Analysis
 // =============================================================
 #ifndef SLEEP_DETECTOR_H
 #define SLEEP_DETECTOR_H

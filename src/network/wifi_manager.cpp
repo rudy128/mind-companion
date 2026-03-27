@@ -1,33 +1,34 @@
 // =============================================================
-// WiFi Manager Implementation
+// WiFi Manager
+// Handles WiFi connection and reconnection
 // =============================================================
 #include "wifi_manager.h"
 #include "../config.h"
 #include <WiFi.h>
 #include <esp_wifi.h>
 
-// Count consecutive network failures. Only force-reconnect after
-// several failures in a row — a single SSL timeout doesn't mean
-// the WiFi stack is dead.
+// Count how many times network failed in a row
 static int _consecutiveFailures = 0;
 static const int FAILURE_THRESHOLD = 3;   // need 3 failures before forcing reconnect
 
+// Track if last network operation failed or not
 void wifiSetLastCycleFailed(bool failed) {
     if (failed) {
         _consecutiveFailures++;
     } else {
-        _consecutiveFailures = 0;
+        _consecutiveFailures = 0;     //Reset if successful
     }
 }
 
-// ── Internal reconnect helper ─────────────────────────────
+// ── Force reconnect to WiFi ─────────────────────────────
 static bool _doReconnect() {
     Serial.println("[WiFi] Force-reconnecting...");
-    WiFi.disconnect(true);
+    WiFi.disconnect(true);           // reset Wi-Fi state
     vTaskDelay(pdMS_TO_TICKS(500));
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     int retry = 0;
+    //Try to connect multiple times
     while (WiFi.status() != WL_CONNECTED && retry < WIFI_RETRY_MAX) {
         vTaskDelay(pdMS_TO_TICKS(500));
         Serial.print(".");
@@ -45,16 +46,19 @@ static bool _doReconnect() {
     return true;
 }
 
+// Connect to Wi-Fi 
 bool wifiConnect() {
-    if (WiFi.status() == WL_CONNECTED) return true;
+    if (WiFi.status() == WL_CONNECTED) return true;  // Already connected
 
     Serial.printf("[WiFi] Connecting to %s\n", WIFI_SSID);
-    WiFi.mode(WIFI_STA);            // ensure station-only mode
-    WiFi.disconnect(true);           // clear any stale state
+    WiFi.mode(WIFI_STA);            //station mode only
+    WiFi.disconnect(true);          // clear old connection
     delay(100);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     int retry = 0;
+
+    // Try connecting
     while (WiFi.status() != WL_CONNECTED && retry < WIFI_RETRY_MAX) {
         delay(500);
         Serial.print(".");
@@ -71,44 +75,40 @@ bool wifiConnect() {
     return false;
 }
 
+// Check if connected
 bool wifiIsConnected() {
     return WiFi.status() == WL_CONNECTED;
 }
 
-// Light-weight connection check.
-// - If WiFi is actually disconnected → reconnect immediately.
-// - If WiFi is connected but we've had several consecutive SSL failures →
-//   do a DNS probe. Only if DNS also fails do we force-reconnect.
-// - Otherwise, trust that WiFi is fine. A single SSL fail is normal
-//   (server timeout, network blip) and doesn't warrant tearing down
-//   the entire WiFi stack which kills the web server and camera.
+// Advanced Wi-Fi Connection check
 bool wifiEnsureConnected() {
-    // Not associated at all — reconnect
+    // Not connected at all — reconnect
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("[WiFi] Not connected — reconnecting");
         return _doReconnect();
     }
 
-    // WiFi is connected — only probe DNS if we've had repeated failures
+    // If only few failures , assume Wi-Fi is okay
     if (_consecutiveFailures < FAILURE_THRESHOLD) {
-        return true;   // trust it's fine
+        return true;   
     }
 
-    // Multiple consecutive failures — check DNS
+    // Too many Failures — check DNS
     Serial.printf("[WiFi] %d consecutive failures — DNS probe...\n", _consecutiveFailures);
     IPAddress testIP;
     if (WiFi.hostByName("api.openai.com", testIP) == 1) {
-        // DNS works — the failures are server-side, not our WiFi
+        // DNS works — Wi-fi is fine
         Serial.println("[WiFi] DNS OK — failures are upstream, not WiFi");
         _consecutiveFailures = 0;
         return true;
     }
 
-    // DNS failed despite being "connected" — TCP stack is stuck
+    // DNS failed - Reconnect Wi-Fi
     Serial.println("[WiFi] DNS probe failed — force-reconnecting");
     return _doReconnect();
 }
 
+// Get Device IP
 String wifiGetIP() {
     return WiFi.localIP().toString();
 }

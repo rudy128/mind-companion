@@ -6,8 +6,14 @@
 
 #include <Arduino.h>
 
+// Initialize GSR sensor
 void   gsrInit();
-float  gsrReadConductance();         // µS (microsiemens)
-String gsrGetStressLevel(float c);   // "Low", "Moderate", "High"
 
-#endif // GSR_SENSOR_H
+// Read GSR sensor and calculate conductance (µS)
+// Lower resistance → more sweat → higher stress
+float  gsrReadConductance();  
+
+// Convert conductance value to a stress level string
+String gsrGetStressLevel(float c);   
+
+#endif 

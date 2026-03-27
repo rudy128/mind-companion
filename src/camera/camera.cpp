@@ -1,7 +1,7 @@
 // =============================================================
 // Camera — ESP32-S3 Built-in OV2640 Implementation
 // MJPEG stream served on port 81 via esp_http_server.
-// This keeps streaming fully independent of AsyncWebServer so
+// This keeps streaming fully independent  so
 // the infinite frame loop never blocks dashboard / API requests.
 // =============================================================
 #include "camera.h"

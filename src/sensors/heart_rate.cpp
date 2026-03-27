@@ -1,7 +1,6 @@
 // =============================================================
-// Heart Rate Sensor — MAX30105 Implementation
-// Accurate BPM: 10-sample float rolling average, outlier rejection,
-// and EMA smoothing for stable, watch-like display.
+// Heart Rate Sensor (MAX30102)
+// Reads pulse and calculates BPM
 // =============================================================
 #include "heart_rate.h"
 #include "../config.h"
@@ -12,7 +11,7 @@
 
 static MAX30105 particleSensor;
 
-// Rolling window: more samples + float for accurate average
+// Internal state for BPM calculation
 static const int RATE_SIZE = 10;
 static float    rates[RATE_SIZE] = {0};
 static int      rateSpot   = 0;
@@ -22,16 +21,14 @@ static float    averageBPM = 0;
 static long     irValue    = 0;
 static bool     fingerOn   = false;
 
-// EMA smoothing: blend new average with previous (0.35 = responsive but smooth)
+// Used to smooth BPM  changes
 static const float EMA_ALPHA = 0.35f;
-// Physiological range: trust beats in this range so we don't lock low (e.g. watch says 82, we had 60)
+// Normal heart rate range
 static const float BPM_TRUST_LO = 55.0f;
 static const float BPM_TRUST_HI = 120.0f;
-// Outlier: for beats outside trust range, reject if more than ±45% from window average
 static const float OUTLIER_RATIO = 0.45f;
 
-// ── Helpers ──────────────────────────────────────────────────
-
+// Reset all stored values
 static void resetRates() {
     for (int i = 0; i < RATE_SIZE; i++) rates[i] = 0;
     rateSpot   = 0;
@@ -40,7 +37,7 @@ static void resetRates() {
     lastBeat   = 0;
 }
 
-// Current window average (only valid samples)
+// Calculate average BPM from stored values
 static float windowAverage() {
     if (rateCount == 0) return 0;
     float sum = 0;
@@ -52,11 +49,11 @@ static float windowAverage() {
     return (n > 0) ? (sum / n) : 0;
 }
 
-// ── Public API ───────────────────────────────────────────────
-
+// Initialize MAX30102 sensor
 bool heartRateInit() {
     Serial.println("HR: Initializing MAX30105 — SDA=" + String(I2C_SDA) + " SCL=" + String(I2C_SCL));
 
+    // Start sensor
     if (!particleSensor.begin(Wire, I2C_SPEED_STANDARD)) {
         Serial.println("HR: MAX30105 not found! Check wiring.");
         Serial.println("    SDA: GPIO " + String(I2C_SDA));
@@ -74,41 +71,47 @@ bool heartRateInit() {
 }
 
 void heartRateUpdate() {
-    irValue = particleSensor.getIR();
+    irValue = particleSensor.getIR();  // read IR signal
 
+    // If finger is detected
     if (irValue > 10000) {
+        // First time finger placed
         if (!fingerOn) {
             Serial.println("\nHR: Finger detected! Measuring BPM...");
             resetRates();
             fingerOn = true;
         }
 
+        // Check if heartbeat detected
         if (checkForBeat(irValue)) {
             unsigned long delta = millis() - lastBeat;
             lastBeat = millis();
 
-            // Reject too-short intervals (double trigger) and too-long (missed beat / noise)
-            if (delta < 350)  return;  // > ~171 BPM single interval
-            if (delta > 2500) return;   // < 24 BPM, likely missed beat
+            // Reject too-short intervals 
+            if (delta < 350)  return;  
+            if (delta > 2500) return;   
 
             float bpm = 60000.0f / (float)delta;
 
+            // Ignore invalid BPM values
             if (bpm < 20.0f || bpm > 255.0f) return;
 
             float winAvg = windowAverage();
-            // Outlier rejection: trust beats in normal resting range (55–120) so reading can match watch
+            // Reject abnormal spikes
             if (bpm >= BPM_TRUST_LO && bpm <= BPM_TRUST_HI) {
-                // Accept without rejection — avoids locking low when true rate is e.g. 82
+                // Accept normal values
             } else if (rateCount >= 3 && winAvg > 0) {
                 float lo = winAvg * (1.0f - OUTLIER_RATIO);
                 float hi = winAvg * (1.0f + OUTLIER_RATIO);
                 if (bpm < lo || bpm > hi) return;
             }
 
+            // Store BPM value
             rates[rateSpot] = bpm;
             rateSpot = (rateSpot + 1) % RATE_SIZE;
             if (rateCount < RATE_SIZE) rateCount++;
 
+            // Calculate new average
             float newAvg = windowAverage();
             if (newAvg > 0) {
                 if (averageBPM > 0)
@@ -118,6 +121,7 @@ void heartRateUpdate() {
             }
         }
     } else {
+        // No finger detected
         if (fingerOn) {
             Serial.println("\nHR: No finger detected");
             resetRates();
@@ -126,9 +130,16 @@ void heartRateUpdate() {
     }
 }
 
+// Get current BPM
 float heartRateGetBPM()        { return averageBPM; }
+
+// Get raw IR value
 long  heartRateGetIR()         { return irValue; }
+
+// Check is finger is placed
 bool  heartRateFingerPresent() { return fingerOn; }
+
+// Check if BPM is abnormal
 bool  heartRateIsAbnormal() {
     if (!fingerOn || averageBPM == 0) return false;
     return (averageBPM > (float)HR_ABNORMAL_HIGH || averageBPM < (float)HR_ABNORMAL_LOW);
