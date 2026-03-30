@@ -39,19 +39,7 @@ static const uint16_t L_SKY     = rgb565(165, 215, 255); // Deep Sleep — pale 
 static const uint16_t L_LILAC   = rgb565(225, 195, 255); // Light Sleep
 static const uint16_t L_APRICOT = rgb565(255, 205, 175); // Restless
 
-// Adafruit GFX has no usable ° glyph — draw a small ring then "C".
-// getTextBounds returns a TIGHT pixel box that under-reports width for
-// strings containing '.' in the default font, so the ring landed on the
-// decimal.  Use character count × cell width instead — always correct
-// for the built-in 5×7 font at any textSize.
-static void tftDrawDegreeC(uint16_t color, int16_t textStartX, int16_t baselineY, const char* numText) {
-    const int16_t cell = 12;                        // 6px × textSize 2 (always size 2 for temp)
-    const int16_t xAfter = textStartX + (int16_t)strlen(numText) * cell;
-    const int16_t gap  = 2;
-    tft.drawCircle(xAfter + gap + 2, baselineY - 6, 2, color);
-    tft.setCursor(xAfter + gap + 7, baselineY);
-    tft.print("C");
-}
+// (degree helper removed — temperature draws ° inline with pure math, no cursor reads)
 
 // Previous values for change detection so we do not reprint it
 static char    prevTime[9]    = "";
@@ -246,21 +234,32 @@ void tftUpdateTemperature(bool sensorOk, float celsius) {
     prevTempKey = key;
 
     TFT_LOCK();
+    // Clear entire value area
     tft.fillRect(X_TEMP_COL, Y_TEMP_VAL, 240 - X_TEMP_COL, 24, ILI9341_BLACK);
     tft.setTextColor(L_AQUA);
     tft.setTextSize(2);
-    tft.setCursor(X_TEMP_COL, Y_TEMP_VAL);
-    tft.print(" ");
-    int16_t numStart = tft.getCursorX();
-    if (numStart <= X_TEMP_COL) numStart = X_TEMP_COL + 12;
+
+    // Build number string
     char tempBuf[16];
     if (sensorOk) {
         snprintf(tempBuf, sizeof(tempBuf), "%.1f", celsius);
     } else {
         snprintf(tempBuf, sizeof(tempBuf), "--");
     }
+
+    // All positions computed from constants — NO getCursorX / getTextBounds.
+    // Default font at size 2: each char cell = 6 × 2 = 12 px wide.
+    const int16_t numX   = X_TEMP_COL + 12;                          // 1 char space after label
+    const int16_t numW   = (int16_t)strlen(tempBuf) * 12;            // pixel width of number
+    const int16_t degCx  = numX + numW + 4;                          // circle center X
+    const int16_t degCy  = Y_TEMP_VAL + 2;                           // circle center Y (superscript)
+    const int16_t cX     = numX + numW + 10;                         // "C" start X
+
+    tft.setCursor(numX, Y_TEMP_VAL);
     tft.print(tempBuf);
-    tftDrawDegreeC(L_AQUA, numStart, Y_TEMP_VAL, tempBuf);
+    tft.drawCircle(degCx, degCy, 2, L_AQUA);
+    tft.setCursor(cX, Y_TEMP_VAL);
+    tft.print("C");
     TFT_UNLOCK();
 }
 
