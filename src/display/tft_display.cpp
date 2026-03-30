@@ -51,7 +51,8 @@ static void tftDrawDegreeC(uint16_t color, int16_t textStartX, int16_t baselineY
     const int16_t cx     = xAfter + gap + 2;
     const int16_t cy     = baselineY - 6;
     tft.drawCircle(cx, cy, 2, color);
-    tft.setCursor(xAfter + gap + 10, baselineY);
+    // Tight spacing keeps "C" on same line as the number (240px width)
+    tft.setCursor(xAfter + gap + 7, baselineY);
     tft.print("C");
 }
 
@@ -70,27 +71,33 @@ static int     prevTempKey    = -99999;  // sensorOk ? tenths °C : -1
 #define Y_COMPANION    22
 #define Y_TIME         4
 
-#define Y_HR_LABEL     44
-#define Y_HR_VAL       44
-#define Y_HR_STATUS    64
+// Extra gap below Companion (~line ends ~38) before Heart Rate
+#define Y_HR_LABEL     54
+#define Y_HR_VAL       54
+#define Y_HR_STATUS    74
 
-#define Y_SLEEP_LABEL  86
-#define Y_SLEEP_VAL    86
+#define Y_SLEEP_LABEL  100
+#define Y_SLEEP_VAL    100
 
-#define Y_STRESS_LABEL 112
-#define Y_STRESS_VAL   132
-#define Y_STRESS_QUOTE 172
+// Extra gap below Sleep row before Stress
+#define Y_STRESS_LABEL 128
+#define Y_STRESS_VAL   148
+#define Y_STRESS_QUOTE 188
 
-#define Y_VOICE_LABEL  214
-#define Y_VOICE_TEXT   234
+#define Y_VOICE_LABEL  230
+#define Y_VOICE_TEXT   250
 
-#define Y_EMERGENCY    254
+#define Y_EMERGENCY    268
 
-#define Y_TEMP_LABEL   268
-#define Y_TEMP_VAL     268
+#define Y_TEMP_LABEL   286
+#define Y_TEMP_VAL     286
 
-// Right column for numeric values (labels on left can be long, e.g. "Sleep status")
-#define X_VALUE_COL    175
+// Values start after left labels (size 2 ≈ 12px/char). HR: "Heart Rate" ends ~142.
+#define X_HR_COL       144   // room for "197 bpm" (7*12=84) → 228 < 240
+// Sleep: "Sleep status" is wider → start value further right
+#define X_SLEEP_COL    158
+// Temp: left enough for "xx.x" + ° + C on one line (label "Device temp" ends ~142)
+#define X_TEMP_COL     144   // just past "Device temp" label (~142); keeps °C on one line
 
 //Initialize TFT
 void tftInit() {
@@ -206,19 +213,21 @@ void tftUpdateHeartRate(int bpm, bool fingerPresent) {
 
     TFT_LOCK();
     // BPM value (right column, aligned with Sleep / Device temp)
-    tft.fillRect(X_VALUE_COL, Y_HR_VAL, 68, 25, ILI9341_BLACK);
+    tft.fillRect(X_HR_COL, Y_HR_VAL, 240 - X_HR_COL, 25, ILI9341_BLACK);
     tft.setTextColor(L_ROSE);
     tft.setTextSize(2);
-    tft.setCursor(X_VALUE_COL, Y_HR_VAL);
+    tft.setCursor(X_HR_COL, Y_HR_VAL);
+    char hrBuf[20];
     if (fingerPresent && bpm > 0) {
-        tft.printf("%d bpm", bpm);
+        snprintf(hrBuf, sizeof(hrBuf), "%d bpm", bpm);
     } else {
-        tft.print("-- bpm");
+        snprintf(hrBuf, sizeof(hrBuf), "-- bpm");
     }
+    tft.print(hrBuf);
 
-    tft.fillRect(X_VALUE_COL, Y_HR_STATUS, 68, 20, ILI9341_BLACK);
+    tft.fillRect(X_HR_COL, Y_HR_STATUS, 240 - X_HR_COL, 20, ILI9341_BLACK);
     tft.setTextSize(1);
-    tft.setCursor(X_VALUE_COL, Y_HR_STATUS + 5);
+    tft.setCursor(X_HR_COL, Y_HR_STATUS + 5);
     if (fingerPresent) {
         tft.setTextColor(L_MINT);
         tft.print("Measuring");
@@ -240,10 +249,10 @@ void tftUpdateTemperature(bool sensorOk, float celsius) {
     prevTempKey = key;
 
     TFT_LOCK();
-    tft.fillRect(X_VALUE_COL, Y_TEMP_VAL, 68, 24, ILI9341_BLACK);
+    tft.fillRect(X_TEMP_COL, Y_TEMP_VAL, 240 - X_TEMP_COL, 24, ILI9341_BLACK);
     tft.setTextColor(L_AQUA);
     tft.setTextSize(2);
-    tft.setCursor(X_VALUE_COL, Y_TEMP_VAL);
+    tft.setCursor(X_TEMP_COL, Y_TEMP_VAL);
     char tempBuf[16];
     if (sensorOk) {
         snprintf(tempBuf, sizeof(tempBuf), "%.1f", celsius);
@@ -251,7 +260,7 @@ void tftUpdateTemperature(bool sensorOk, float celsius) {
         snprintf(tempBuf, sizeof(tempBuf), "--");
     }
     tft.print(tempBuf);
-    tftDrawDegreeC(L_AQUA, X_VALUE_COL, Y_TEMP_VAL, tempBuf);
+    tftDrawDegreeC(L_AQUA, X_TEMP_COL, Y_TEMP_VAL, tempBuf);
     TFT_UNLOCK();
 }
 
@@ -270,7 +279,7 @@ void tftUpdateSleep(const String& quality) {
     prevSleep = quality;
 
     TFT_LOCK();
-    tft.fillRect(X_VALUE_COL, Y_SLEEP_VAL, 65, 25, ILI9341_BLACK);
+    tft.fillRect(X_SLEEP_COL, Y_SLEEP_VAL, 240 - X_SLEEP_COL, 25, ILI9341_BLACK);
     tft.setTextSize(2);
 
     if (quality == "Deep Sleep")       tft.setTextColor(L_SKY);
@@ -278,7 +287,7 @@ void tftUpdateSleep(const String& quality) {
     else if (quality == "Restless")    tft.setTextColor(L_APRICOT);
     else                               tft.setTextColor(L_CLOUD);
 
-    tft.setCursor(X_VALUE_COL, Y_SLEEP_VAL);
+    tft.setCursor(X_SLEEP_COL, Y_SLEEP_VAL);
     tftPrintSleepShort(quality);
     TFT_UNLOCK();
 }
