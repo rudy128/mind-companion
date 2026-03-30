@@ -45,8 +45,7 @@ static const uint16_t L_APRICOT = rgb565(255, 205, 175); // Restless
 // decimal.  Use character count × cell width instead — always correct
 // for the built-in 5×7 font at any textSize.
 static void tftDrawDegreeC(uint16_t color, int16_t textStartX, int16_t baselineY, const char* numText) {
-    const uint8_t sz   = tft.getTextSize();        // current setTextSize()
-    const int16_t cell = 6 * (int16_t)sz;          // px per char (5px glyph + 1px gap, scaled)
+    const int16_t cell = 12;                        // 6px × textSize 2 (always size 2 for temp)
     const int16_t xAfter = textStartX + (int16_t)strlen(numText) * cell;
     const int16_t gap  = 2;
     tft.drawCircle(xAfter + gap + 2, baselineY - 6, 2, color);
