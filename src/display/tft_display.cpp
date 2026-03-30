@@ -10,6 +10,7 @@
 #include "../network/logger.h"
 #include <vector>
 #include <string>
+#include <cstdio>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -38,15 +39,19 @@ static const uint16_t L_SKY     = rgb565(165, 215, 255); // Deep Sleep — pale 
 static const uint16_t L_LILAC   = rgb565(225, 195, 255); // Light Sleep
 static const uint16_t L_APRICOT = rgb565(255, 205, 175); // Restless
 
-// Adafruit GFX built-in font has no usable ° glyph (0xB0 draws a junk tile). Draw a small
-// ring in the superscript position, then "C".
-static void tftDrawDegreeC(uint16_t color) {
-    int16_t x0 = tft.getCursorX();
-    int16_t y0 = tft.getCursorY();
-    const int16_t cx = x0 + 4;
-    const int16_t cy = y0 - 6;
+// Adafruit GFX has no usable ° glyph — draw a small ring, then "C".
+// Do not use getCursorX() after printf on ESP32: the cursor often stops mid-string (e.g. at
+// '.'), which drew the ring on the decimal. Use getTextBounds on the same string instead.
+static void tftDrawDegreeC(uint16_t color, int16_t textStartX, int16_t baselineY, const char* numText) {
+    int16_t         bx1, by1;
+    uint16_t        tw, th;
+    tft.getTextBounds(numText, textStartX, baselineY, &bx1, &by1, &tw, &th);
+    const int16_t xAfter = bx1 + (int16_t)tw;
+    const int16_t gap    = 2;
+    const int16_t cx     = xAfter + gap + 2;
+    const int16_t cy     = baselineY - 6;
     tft.drawCircle(cx, cy, 2, color);
-    tft.setCursor(x0 + 14, y0);
+    tft.setCursor(xAfter + gap + 10, baselineY);
     tft.print("C");
 }
 
@@ -228,13 +233,14 @@ void tftUpdateTemperature(bool sensorOk, float celsius) {
     tft.setTextColor(L_AQUA);
     tft.setTextSize(2);
     tft.setCursor(80, Y_TEMP_VAL);
+    char tempBuf[16];
     if (sensorOk) {
-        tft.printf("%.1f", celsius);
-        tftDrawDegreeC(L_AQUA);
+        snprintf(tempBuf, sizeof(tempBuf), "%.1f", celsius);
     } else {
-        tft.print("--");
-        tftDrawDegreeC(L_AQUA);
+        snprintf(tempBuf, sizeof(tempBuf), "--");
     }
+    tft.print(tempBuf);
+    tftDrawDegreeC(L_AQUA, 80, Y_TEMP_VAL, tempBuf);
     TFT_UNLOCK();
 }
 
