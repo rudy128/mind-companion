@@ -205,7 +205,7 @@ void tftUpdateHeartRate(int bpm, bool fingerPresent) {
     tft.setCursor(80, Y_HR_STATUS + 5);
     if (fingerPresent) {
         tft.setTextColor(L_MINT);
-        tft.print("Finger Detected");
+        tft.print("Measuring");
     } else {
         tft.setTextColor(L_ROSE);
         tft.print("No Finger");

@@ -453,7 +453,7 @@ function updateData(d) {
 
   $("hr-status").textContent = !d.finger
     ? "No finger"
-    : isAbnormal ? "Abnormal range" : "Normal";
+    : isAbnormal ? "Abnormal range" : "Measuring";
 
   $("hr-icon").style.color = isAbnormal
     ? "var(--red)"
