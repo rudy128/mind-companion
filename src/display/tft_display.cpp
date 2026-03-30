@@ -39,19 +39,17 @@ static const uint16_t L_SKY     = rgb565(165, 215, 255); // Deep Sleep — pale 
 static const uint16_t L_LILAC   = rgb565(225, 195, 255); // Light Sleep
 static const uint16_t L_APRICOT = rgb565(255, 205, 175); // Restless
 
-// Adafruit GFX has no usable ° glyph — draw a small ring, then "C".
-// Do not use getCursorX() after printf on ESP32: the cursor often stops mid-string (e.g. at
-// '.'), which drew the ring on the decimal. Use getTextBounds on the same string instead.
+// Adafruit GFX has no usable ° glyph — draw a small ring then "C".
+// getTextBounds returns a TIGHT pixel box that under-reports width for
+// strings containing '.' in the default font, so the ring landed on the
+// decimal.  Use character count × cell width instead — always correct
+// for the built-in 5×7 font at any textSize.
 static void tftDrawDegreeC(uint16_t color, int16_t textStartX, int16_t baselineY, const char* numText) {
-    int16_t         bx1, by1;
-    uint16_t        tw, th;
-    tft.getTextBounds(numText, textStartX, baselineY, &bx1, &by1, &tw, &th);
-    const int16_t xAfter = bx1 + (int16_t)tw;
-    const int16_t gap    = 2;
-    const int16_t cx     = xAfter + gap + 2;
-    const int16_t cy     = baselineY - 6;
-    tft.drawCircle(cx, cy, 2, color);
-    // Tight spacing keeps "C" on same line as the number (240px width)
+    const uint8_t sz   = tft.getTextSize();        // current setTextSize()
+    const int16_t cell = 6 * (int16_t)sz;          // px per char (5px glyph + 1px gap, scaled)
+    const int16_t xAfter = textStartX + (int16_t)strlen(numText) * cell;
+    const int16_t gap  = 2;
+    tft.drawCircle(xAfter + gap + 2, baselineY - 6, 2, color);
     tft.setCursor(xAfter + gap + 7, baselineY);
     tft.print("C");
 }
