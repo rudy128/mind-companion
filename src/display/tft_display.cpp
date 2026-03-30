@@ -65,22 +65,32 @@ static bool    prevEmergency  = false;
 static int     prevTempKey    = -99999;  // sensorOk ? tenths °C : -1
 
 // ============ Layout Positions ============
-// Top → bottom: title, Heart, Temp, Stress, Sleep, Emergency, Voice
-#define Y_TITLE        4
+// Top → bottom: Mind | Time, Companion, Heart Rate, Sleep status, Stress, Voice, Emergency, Device temp
+#define Y_MIND         4
+#define Y_COMPANION    22
 #define Y_TIME         4
-#define Y_HR_LABEL     28
-#define Y_HR_VAL       33
-#define Y_HR_STATUS    63
-#define Y_TEMP_LABEL   86
-#define Y_TEMP_VAL     91
-#define Y_STRESS_LABEL 114
-#define Y_STRESS_VAL   138
-#define Y_STRESS_QUOTE 163
-#define Y_SLEEP_LABEL  205
-#define Y_SLEEP_VAL    225
-#define Y_EMERGENCY    248
-#define Y_VOICE_LABEL  268
-#define Y_VOICE_TEXT   284
+
+#define Y_HR_LABEL     44
+#define Y_HR_VAL       44
+#define Y_HR_STATUS    64
+
+#define Y_SLEEP_LABEL  86
+#define Y_SLEEP_VAL    86
+
+#define Y_STRESS_LABEL 112
+#define Y_STRESS_VAL   132
+#define Y_STRESS_QUOTE 172
+
+#define Y_VOICE_LABEL  214
+#define Y_VOICE_TEXT   234
+
+#define Y_EMERGENCY    254
+
+#define Y_TEMP_LABEL   268
+#define Y_TEMP_VAL     268
+
+// Right column for numeric values (labels on left can be long, e.g. "Sleep status")
+#define X_VALUE_COL    175
 
 //Initialize TFT
 void tftInit() {
@@ -137,35 +147,37 @@ void tftShowBootScreen(const String& ipLine) {
     delay(2500);
 }
 
-//Draw main dashboard — title + section labels (Heart, Temp, Stress, Sleep, Voice)
+//Draw main dashboard — header (Mind | Time, Companion) + section labels
 void tftDrawDashboardLabels() {
     TFT_LOCK();
     tft.fillScreen(ILI9341_BLACK);
-    tft.setTextColor(L_TITLE_YELLOW);
-    tft.setTextSize(1);
-    tft.setCursor(10, Y_TITLE);
-    tft.print("M.I.N.D. Companion");
 
+    tft.setTextColor(L_TITLE_YELLOW);
     tft.setTextSize(2);
+    tft.setCursor(10, Y_MIND);
+    tft.print("Mind");
+    tft.setCursor(10, Y_COMPANION);
+    tft.print("Companion");
+
     tft.setTextColor(L_ROSE);
     tft.setCursor(10, Y_HR_LABEL);
-    tft.println("Heart:");
-
-    tft.setTextColor(L_AQUA);
-    tft.setCursor(10, Y_TEMP_LABEL);
-    tft.println("Temp:");
-
-    tft.setTextColor(L_MINT);
-    tft.setCursor(10, Y_STRESS_LABEL);
-    tft.println("Stress:");
+    tft.print("Heart Rate");
 
     tft.setTextColor(L_LEMON);
     tft.setCursor(10, Y_SLEEP_LABEL);
-    tft.println("Sleep:");
+    tft.print("Sleep status");
+
+    tft.setTextColor(L_MINT);
+    tft.setCursor(10, Y_STRESS_LABEL);
+    tft.print("Stress :");
 
     tft.setTextColor(L_CLOUD);
     tft.setCursor(10, Y_VOICE_LABEL);
-    tft.println("Voice:");
+    tft.print("Voice");
+
+    tft.setTextColor(L_AQUA);
+    tft.setCursor(10, Y_TEMP_LABEL);
+    tft.print("Device temp");
     TFT_UNLOCK();
 
     tftUpdateHeartRate(0, false);
@@ -178,10 +190,10 @@ void tftUpdateTime(const char* timeStr) {
     strncpy(prevTime, timeStr, sizeof(prevTime) - 1);
 
     TFT_LOCK();
-    tft.fillRect(140, Y_TIME, 130, 20, ILI9341_BLACK);
+    tft.fillRect(130, Y_TIME, 108, 20, ILI9341_BLACK);
     tft.setTextColor(L_CLOUD);
     tft.setTextSize(2);
-    tft.setCursor(140, Y_TIME);
+    tft.setCursor(130, Y_TIME);
     tft.print(timeStr);
     TFT_UNLOCK();
 }
@@ -193,21 +205,20 @@ void tftUpdateHeartRate(int bpm, bool fingerPresent) {
     prevFinger = fingerPresent;
 
     TFT_LOCK();
-    // BPM value
-    tft.fillRect(80, Y_HR_VAL, 160, 25, ILI9341_BLACK);
+    // BPM value (right column, aligned with Sleep / Device temp)
+    tft.fillRect(X_VALUE_COL, Y_HR_VAL, 68, 25, ILI9341_BLACK);
     tft.setTextColor(L_ROSE);
     tft.setTextSize(2);
-    tft.setCursor(80, Y_HR_VAL);
+    tft.setCursor(X_VALUE_COL, Y_HR_VAL);
     if (fingerPresent && bpm > 0) {
         tft.printf("%d bpm", bpm);
     } else {
         tft.print("-- bpm");
     }
 
-    // Finger status
-    tft.fillRect(80, Y_HR_STATUS, 160, 20, ILI9341_BLACK);
+    tft.fillRect(X_VALUE_COL, Y_HR_STATUS, 68, 20, ILI9341_BLACK);
     tft.setTextSize(1);
-    tft.setCursor(80, Y_HR_STATUS + 5);
+    tft.setCursor(X_VALUE_COL, Y_HR_STATUS + 5);
     if (fingerPresent) {
         tft.setTextColor(L_MINT);
         tft.print("Measuring");
@@ -229,10 +240,10 @@ void tftUpdateTemperature(bool sensorOk, float celsius) {
     prevTempKey = key;
 
     TFT_LOCK();
-    tft.fillRect(80, Y_TEMP_VAL, 160, 22, ILI9341_BLACK);
+    tft.fillRect(X_VALUE_COL, Y_TEMP_VAL, 68, 24, ILI9341_BLACK);
     tft.setTextColor(L_AQUA);
     tft.setTextSize(2);
-    tft.setCursor(80, Y_TEMP_VAL);
+    tft.setCursor(X_VALUE_COL, Y_TEMP_VAL);
     char tempBuf[16];
     if (sensorOk) {
         snprintf(tempBuf, sizeof(tempBuf), "%.1f", celsius);
@@ -240,8 +251,17 @@ void tftUpdateTemperature(bool sensorOk, float celsius) {
         snprintf(tempBuf, sizeof(tempBuf), "--");
     }
     tft.print(tempBuf);
-    tftDrawDegreeC(L_AQUA, 80, Y_TEMP_VAL, tempBuf);
+    tftDrawDegreeC(L_AQUA, X_VALUE_COL, Y_TEMP_VAL, tempBuf);
     TFT_UNLOCK();
+}
+
+// Short labels for right column (matches layout mockup)
+static void tftPrintSleepShort(const String& quality) {
+    if (quality == "Deep Sleep")       tft.print("Deep");
+    else if (quality == "Light Sleep") tft.print("Light");
+    else if (quality == "Restless")    tft.print("Rest.");  // fits 240px row at size 2
+    else if (quality == "Awake")       tft.print("Awake");
+    else tft.print(quality);
 }
 
 //Update sleep quality status
@@ -250,7 +270,7 @@ void tftUpdateSleep(const String& quality) {
     prevSleep = quality;
 
     TFT_LOCK();
-    tft.fillRect(10, Y_SLEEP_VAL, 220, 25, ILI9341_BLACK);
+    tft.fillRect(X_VALUE_COL, Y_SLEEP_VAL, 65, 25, ILI9341_BLACK);
     tft.setTextSize(2);
 
     if (quality == "Deep Sleep")       tft.setTextColor(L_SKY);
@@ -258,8 +278,8 @@ void tftUpdateSleep(const String& quality) {
     else if (quality == "Restless")    tft.setTextColor(L_APRICOT);
     else                               tft.setTextColor(L_CLOUD);
 
-    tft.setCursor(10, Y_SLEEP_VAL);
-    tft.println(quality);
+    tft.setCursor(X_VALUE_COL, Y_SLEEP_VAL);
+    tftPrintSleepShort(quality);
     TFT_UNLOCK();
 }
 
@@ -355,7 +375,7 @@ void tftUpdateEmergency(bool active) {
     TFT_UNLOCK();
 }
 
-// Speech line (label "Voice:" is static in tftDrawDashboardLabels)
+// Speech line (label "Voice" is static in tftDrawDashboardLabels)
 void tftUpdateSpeechStatus(const String& text) {
     TFT_LOCK();
     tft.fillRect(0, Y_VOICE_TEXT, 240, 16, ILI9341_BLACK);
