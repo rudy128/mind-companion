@@ -94,10 +94,10 @@ static int     prevTempKey    = -99999;  // sensorOk ? tenths °C : -1
 
 // Values start after left labels (size 2 ≈ 12px/char). HR: "Heart Rate" ends ~142.
 #define X_HR_COL       144   // room for "197 bpm" (7*12=84) → 228 < 240
-// Sleep: "Sleep status" is wider → start value further right
-#define X_SLEEP_COL    158
-// Temp: left enough for "xx.x" + ° + C on one line (label "Device temp" ends ~142)
-#define X_TEMP_COL     144   // just past "Device temp" label (~142); keeps °C on one line
+// Sleep: after "Sleep status: " (colon + space; 14 chars × 12 + x=10 = 178)
+#define X_SLEEP_COL    180
+// After "Device temp:" (12 chars × 12 + x=10 = 154)
+#define X_TEMP_COL     156
 
 //Initialize TFT
 void tftInit() {
@@ -172,7 +172,7 @@ void tftDrawDashboardLabels() {
 
     tft.setTextColor(L_LEMON);
     tft.setCursor(10, Y_SLEEP_LABEL);
-    tft.print("Sleep status");
+    tft.print("Sleep status: ");
 
     tft.setTextColor(L_MINT);
     tft.setCursor(10, Y_STRESS_LABEL);
@@ -184,7 +184,7 @@ void tftDrawDashboardLabels() {
 
     tft.setTextColor(L_AQUA);
     tft.setCursor(10, Y_TEMP_LABEL);
-    tft.print("Device temp");
+    tft.print("Device temp:");
     TFT_UNLOCK();
 
     tftUpdateHeartRate(0, false);
@@ -253,6 +253,9 @@ void tftUpdateTemperature(bool sensorOk, float celsius) {
     tft.setTextColor(L_AQUA);
     tft.setTextSize(2);
     tft.setCursor(X_TEMP_COL, Y_TEMP_VAL);
+    tft.print(" ");
+    int16_t numStart = tft.getCursorX();
+    if (numStart <= X_TEMP_COL) numStart = X_TEMP_COL + 12;
     char tempBuf[16];
     if (sensorOk) {
         snprintf(tempBuf, sizeof(tempBuf), "%.1f", celsius);
@@ -260,7 +263,7 @@ void tftUpdateTemperature(bool sensorOk, float celsius) {
         snprintf(tempBuf, sizeof(tempBuf), "--");
     }
     tft.print(tempBuf);
-    tftDrawDegreeC(L_AQUA, X_TEMP_COL, Y_TEMP_VAL, tempBuf);
+    tftDrawDegreeC(L_AQUA, numStart, Y_TEMP_VAL, tempBuf);
     TFT_UNLOCK();
 }
 
