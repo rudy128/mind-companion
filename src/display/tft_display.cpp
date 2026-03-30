@@ -38,6 +38,18 @@ static const uint16_t L_SKY     = rgb565(165, 215, 255); // Deep Sleep — pale 
 static const uint16_t L_LILAC   = rgb565(225, 195, 255); // Light Sleep
 static const uint16_t L_APRICOT = rgb565(255, 205, 175); // Restless
 
+// Adafruit GFX built-in font has no usable ° glyph (0xB0 draws a junk tile). Draw a small
+// ring in the superscript position, then "C".
+static void tftDrawDegreeC(uint16_t color) {
+    int16_t x0 = tft.getCursorX();
+    int16_t y0 = tft.getCursorY();
+    const int16_t cx = x0 + 4;
+    const int16_t cy = y0 - 6;
+    tft.drawCircle(cx, cy, 2, color);
+    tft.setCursor(x0 + 14, y0);
+    tft.print("C");
+}
+
 // Previous values for change detection so we do not reprint it
 static char    prevTime[9]    = "";
 static int     prevBPM        = -1;
@@ -201,7 +213,7 @@ void tftUpdateHeartRate(int bpm, bool fingerPresent) {
     TFT_UNLOCK();
 }
 
-// Temperature — same as dashboard (one decimal + °C)
+// Temperature — one decimal + drawn degree ring + C (see tftDrawDegreeC)
 void tftUpdateTemperature(bool sensorOk, float celsius) {
     int key = -1;
     if (sensorOk) {
@@ -218,12 +230,10 @@ void tftUpdateTemperature(bool sensorOk, float celsius) {
     tft.setCursor(80, Y_TEMP_VAL);
     if (sensorOk) {
         tft.printf("%.1f", celsius);
-        tft.print((char)0xB0);
-        tft.print("C");
+        tftDrawDegreeC(L_AQUA);
     } else {
         tft.print("--");
-        tft.print((char)0xB0);
-        tft.print("C");
+        tftDrawDegreeC(L_AQUA);
     }
     TFT_UNLOCK();
 }
