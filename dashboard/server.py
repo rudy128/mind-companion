@@ -3,7 +3,8 @@ M.I.N.D. Companion — Flask Dashboard Server
 Bridges MQTT (Mosquitto) ↔ Browser via Server-Sent Events (SSE).
 
 Architecture:
-  - paho-mqtt subscribes to mind/* topics on the local broker
+  - paho-mqtt subscribes to mind/* topics on the local broker (connects in a
+    background thread so Flask starts even when the broker is down)
   - /stream endpoint pushes updates to browser via SSE
   - /cmd endpoint receives commands from browser and publishes to mind/cmd
   - /   serves the dashboard HTML
@@ -27,9 +28,29 @@ TOPICS = {
     "alert": "mind/alert",
 }
 
+# Shown until real MQTT `mind/data` arrives (same keys as firmware JSON).
+DEMO_STATE = {
+    "bpm":       55,
+    "finger":    True,
+    "gsr":       3.8,
+    "stress":    "Low",
+    "sleep":     "Light Sleep",
+    "emergency": False,
+    "ax":        "0.02",
+    "ay":        "-0.01",
+    "az":        "0.98",
+    "temp":      "36.4",
+    "voice":     "Demo preview — live data replaces this when the device publishes.",
+    "breathing": False,
+    "camOpen":   False,
+    "mic_active": False,
+    "heap":      180 * 1024,
+    "uptime":    42,
+}
+
 # ── Shared state ──────────────────────────────────────────────
 app           = Flask(__name__)
-latest_state  = {}               # last known sensor payload
+latest_state  = dict(DEMO_STATE)  # copy; replaced/updated by MQTT
 
 # Each connected SSE client gets a queue; we fan-out messages to all.
 client_queues: list[queue.Queue] = []
@@ -82,27 +103,33 @@ def on_message(client, userdata, msg):
             pass
 
 # ── MQTT client setup ─────────────────────────────────────────
-def start_mqtt():
+mqtt_client = None  # set by background thread once broker accepts a connection
+
+
+def _mqtt_worker():
+    """Retry connect until the broker is up; never block Flask startup."""
+    global mqtt_client
     mc = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
                      client_id="mind-flask-dashboard")
     mc.on_connect    = on_connect
     mc.on_disconnect = on_disconnect
     mc.on_message    = on_message
 
-    # Attempt to connect; retry in background if broker isn't up yet
-    connected = False
-    while not connected:
+    while True:
         try:
             mc.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
-            connected = True
+            break
         except Exception as e:
             print(f"[MQTT] Connection failed ({e}), retrying in 3s...")
             time.sleep(3)
 
-    mc.loop_start()   # background thread for keepalive + message dispatch
-    return mc
+    mc.loop_start()
+    mqtt_client = mc
+    print("[MQTT] Connected; subscribed and network loop running")
 
-mqtt_client = None   # populated in __main__
+
+def start_mqtt_background():
+    threading.Thread(target=_mqtt_worker, daemon=True, name="mqtt").start()
 
 # ── Flask routes ──────────────────────────────────────────────
 
@@ -172,7 +199,7 @@ def get_state():
 
 # ── Entry point ───────────────────────────────────────────────
 if __name__ == "__main__":
-    mqtt_client = start_mqtt()
+    start_mqtt_background()
     print(f"[SERVER] Dashboard running at http://localhost:{FLASK_PORT}")
     # use_reloader=False so we don't start two MQTT loops in debug mode
     app.run(host="0.0.0.0", port=FLASK_PORT, debug=True, use_reloader=False, threaded=True)
