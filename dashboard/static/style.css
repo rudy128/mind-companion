@@ -614,7 +614,7 @@ body {
   margin-top: 0.6rem;
 }
 
-/* ── Graphs Section: 3 square charts in one row, scale with page width ─── */
+/* ── Graphs Section: three shallow rectangles in one row ─── */
 .graphs-section {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -644,15 +644,16 @@ body {
 }
 .chart-wrap { overflow: hidden; }
 .chart-wrap-short {
-  aspect-ratio: 1;
+  aspect-ratio: 3 / 1;
   width: 100%;
+  min-height: 0;
 }
 .chart-wrap-short canvas { width: 100% !important; height: 100% !important; display: block; }
 
 .chart-wrap-wide {
-  aspect-ratio: 2 / 1;
+  aspect-ratio: 3 / 1;
   width: 100%;
-  min-height: 140px;
+  min-height: 0;
 }
 .chart-wrap-wide canvas { width: 100% !important; height: 100% !important; display: block; }
 

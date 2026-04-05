@@ -146,10 +146,12 @@ function drawAxisChart(canvas, data, config) {
   const isSquare = wrap && wrap.classList.contains("chart-wrap-square");
   const isWide = wrap && wrap.classList.contains("chart-wrap-wide");
   const size = wrap ? Math.min(wrap.offsetWidth || 400, wrap.offsetHeight || 400) : 400;
-  const w = (isShort || isSquare) && wrap ? size : (wrap ? (wrap.offsetWidth || 600) : 600);
-  const h = (isShort || isSquare) && wrap
+  const w = isSquare && wrap ? size : (wrap ? (wrap.offsetWidth || 600) : 600);
+  const h = isSquare && wrap
     ? size
-    : (isWide && wrap ? (wrap.offsetHeight || Math.max(140, Math.round(w / 2))) : (config.height || 140));
+    : (isShort || isWide) && wrap
+      ? (wrap.offsetHeight || Math.max(64, Math.round(w / 3)))
+      : (config.height || 140);
 
   canvas.width  = w * dpr;
   canvas.height = h * dpr;
