@@ -79,7 +79,15 @@ body {
   margin-top: 0.25rem;
 }
 .brand-title { font-size: 40px; font-weight: 700; letter-spacing: -.03em; line-height: 1.1; }
-.brand-sub   { font-size: .875rem; color: var(--fg-muted); line-height: 1.4; margin-top: .25rem; }
+/* Match KPI section label (e.g. Heart Rate) */
+.brand-sub {
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--fg-muted);
+  line-height: 1.4;
+  margin-top: 0.25rem;
+}
 .header-right {
   display: flex; align-items: center; gap: .875rem;
 }
@@ -502,6 +510,108 @@ body {
   font-size: 0.9375rem;
   color: var(--fg-muted);
   font-weight: 500;
+}
+
+/* KPI / sleep / overall / camera / controls / IMU: larger titles + icons */
+#sensor-grid > .card.card-hr .card-label,
+#sensor-grid > .card:has(#stress-level) .card-label,
+#sensor-grid > .card:has(#sleep-desc) .card-label,
+#sensor-grid > .card:has(#ax-val) .card-label,
+#sensor-grid > .card:has(#cam-img) .card-label,
+#sensor-grid > .card:has(#breathe-btn) .card-label,
+#overall-stress-card .card-label {
+  font-size: 0.875rem;
+  letter-spacing: 0.1em;
+}
+#sensor-grid > .card.card-hr .card-head .icon-sm,
+#sensor-grid > .card:has(#stress-level) .card-head .icon-sm,
+#sensor-grid > .card:has(#sleep-desc) .card-head .icon-sm,
+#sensor-grid > .card:has(#ax-val) .card-head .icon-sm,
+#sensor-grid > .card:has(#cam-img) .card-head .icon-sm,
+#sensor-grid > .card:has(#breathe-btn) .card-head .icon-sm,
+#overall-stress-card .card-head .icon-sm {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+#sensor-grid > .card.card-hr .hr-value,
+#overall-stress-card .overall-stress-value {
+  font-size: 3.125rem;
+}
+#sensor-grid > .card.card-hr .hr-unit,
+#overall-stress-card .overall-stress-unit {
+  font-size: 1.0625rem;
+}
+#sensor-grid > .card.card-hr #hr-status {
+  font-size: 1rem;
+}
+/* Stress word + µS: same font size/weight/spacing as "Stress Level" .card-label */
+#sensor-grid > .card:has(#stress-level) #stress-level {
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.35;
+}
+#sensor-grid > .card:has(#stress-level) #stress-level.stress-wear-strap {
+  font-size: 0.625rem;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+}
+#sensor-grid > .card:has(#stress-level) #gsr-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.35;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+/* Sleep body copy = same size as Sleep Quality label */
+#sensor-grid > .card:has(#sleep-desc) #sleep-desc {
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+#sensor-grid > .card:has(#sleep-desc) #sleep-badge {
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0.4rem 0.85rem;
+}
+#overall-stress-card #overall-stress-msg {
+  font-size: 1.5rem;
+}
+
+/* Live camera + device controls: larger subcopy and buttons */
+#sensor-grid > .card:has(#cam-img) > .card-sub,
+#sensor-grid > .card:has(#breathe-btn) > .card-sub {
+  font-size: 1rem;
+}
+#sensor-grid > .card:has(#cam-img) .btn {
+  font-size: 0.9375rem;
+  padding: 0.55rem 0.95rem;
+}
+#sensor-grid > .card:has(#cam-img) .btn .icon-xs {
+  width: 1.0625rem;
+  height: 1.0625rem;
+}
+#sensor-grid > .card:has(#breathe-btn) .btn {
+  font-size: 0.9375rem;
+  padding: 0.55rem 0.85rem;
+}
+#sensor-grid > .card:has(#breathe-btn) .controls-grid .icon-xs {
+  width: 1.0625rem;
+  height: 1.0625rem;
+}
+
+/* Motion / IMU: larger axis labels and values */
+#sensor-grid > .card:has(#ax-val) .imu-label {
+  font-size: 0.75rem;
+}
+#sensor-grid > .card:has(#ax-val) .imu-val {
+  font-size: 1.0625rem;
+}
+#sensor-grid > .card:has(#ax-val) .imu-grid {
+  gap: 0.5rem 0.55rem;
+  margin-top: 0.6rem;
 }
 
 /* ── Graphs Section: 3 square charts in one row, scale with page width ─── */
