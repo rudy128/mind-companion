@@ -9,13 +9,13 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:         #09090b;
-  --bg-card:    #18181b;
-  --bg-muted:   #27272a;
-  --border:     #27272a;
+  --bg:         #0d0d0d;
+  --bg-card:    #1a1a1a;
+  --bg-muted:   #262626;
+  --border:     #2a2a2a;
   --fg:         #fafafa;
-  --fg-muted:   #a1a1aa;
-  --primary:    #4f46e5;
+  --fg-muted:   #9ca3af;
+  --primary:    #6366f1;
   --primary-fg: #fff;
   --green:      #4ade80;
   --yellow:     #facc15;
@@ -24,7 +24,8 @@
   --cyan:       #22d3ee;
   --radius:     8px;
   --radius-lg:  12px;
-  --shadow:     0 1px 3px rgba(0,0,0,.4), 0 1px 2px rgba(0,0,0,.3);
+  --shadow:     0 1px 3px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.35);
+  --tile-gap:   1.125rem;
 }
 
 html { font-size: 16px; }
@@ -52,29 +53,33 @@ body {
 /* ── Header ───────────────────────────────────────── */
 .header {
   position: sticky; top: 0; z-index: 50;
-  background: rgba(9,9,11,.9);
+  background: rgba(13,13,13,.92);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
 .header-inner {
   max-width: 1400px;
   margin: 0 auto;
-  padding: .75rem 1.5rem;
+  padding: 1rem 1.5rem 1.125rem;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
+  flex-wrap: wrap;
 }
+.header-inner .header-right { align-self: center; }
 .brand {
   display: flex; align-items: center; gap: .875rem;
 }
 .brand-icon {
-  width: 1.375rem; height: 1.375rem;
-  color: var(--primary);
+  width: 2rem; height: 2rem;
+  color: var(--blue);
   flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 0.25rem;
 }
-.brand-title { font-size: 1.1875rem; font-weight: 600; letter-spacing: -.02em; line-height: 1.25; }
-.brand-sub   { font-size: .8125rem; color: var(--fg-muted); line-height: 1.4; margin-top: .1rem; }
+.brand-title { font-size: 40px; font-weight: 700; letter-spacing: -.03em; line-height: 1.1; }
+.brand-sub   { font-size: .875rem; color: var(--fg-muted); line-height: 1.4; margin-top: .25rem; }
 .header-right {
   display: flex; align-items: center; gap: .875rem;
 }
@@ -142,36 +147,259 @@ body {
   margin: 0 auto;
   padding: 1.75rem 1.5rem;
 }
-.grid {
-  display: grid;
-  gap: 1.125rem;
-  grid-template-columns: repeat(4, 1fr);
-}
-@media (max-width: 900px) {
-  .grid { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 500px) {
-  .grid { grid-template-columns: 1fr; }
+.sensor-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tile-gap);
 }
 
-/* ── Overall Stress KPI (same style as Heart Rate) ─── */
-.card-overall-stress .overall-stress-big {
+/* Row 1: four KPI mini-squares (~½ the side length of row-2 panels) */
+.kpi-row {
+  display: grid;
+  gap: var(--tile-gap);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
+}
+@media (max-width: 900px) {
+  .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 500px) {
+  .kpi-row { grid-template-columns: minmax(0, 1fr); }
+}
+
+.card.card-kpi {
+  aspect-ratio: 1;
+  width: 50%;
+  max-width: 50%;
+  justify-self: center;
+  align-self: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 0.45rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+.card.card-kpi .card-head {
+  justify-content: center;
+  margin-bottom: 0;
+  flex-shrink: 0;
+  width: 100%;
+}
+.card.card-kpi .card-label {
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+}
+.card.card-kpi .icon-sm {
+  width: 0.9375rem;
+  height: 0.9375rem;
+}
+.square-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  width: 100%;
+}
+.card.card-kpi .hr-big,
+.card.card-kpi .overall-stress-big {
+  justify-content: center;
+  margin: 0;
+}
+.card.card-kpi .hr-value {
+  font-size: clamp(1rem, 5.5vmin, 2rem);
+  font-weight: 700;
+}
+.card.card-kpi .hr-unit {
+  font-size: 0.75rem;
+}
+.card.card-kpi .stress-big {
+  font-size: clamp(0.95rem, 5vmin, 1.85rem);
+  margin: 0;
+  line-height: 1.12;
+}
+.card.card-kpi .stress-big.stress-wear-strap {
+  font-size: 0.65rem;
+  line-height: 1.3;
+  max-width: 100%;
+}
+.card.card-kpi .square-foot {
+  font-size: 0.7rem;
+  line-height: 1.3;
+  margin: 0;
+}
+.card.card-kpi .sleep-line {
+  font-size: 0.7rem;
+  line-height: 1.25;
+  margin: 0;
+  max-width: 100%;
+}
+.card.card-kpi .sleep-badge-inline {
+  margin-top: 0.15rem;
+  font-size: 0.6875rem;
+  padding: 0.25rem 0.55rem;
+}
+.card.card-kpi .imu-grid-kpi {
+  margin-top: 0;
+  gap: 0.3rem 0.5rem;
+}
+.card.card-kpi .imu-label {
+  font-size: 0.5625rem;
+}
+.card.card-kpi .imu-val {
+  font-size: 0.75rem;
+}
+
+/* Row 2: four large square panels */
+.grid {
+  display: grid;
+  gap: var(--tile-gap);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.panel-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+@media (max-width: 1100px) {
+  .panel-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .panel-row { grid-template-columns: minmax(0, 1fr); }
+}
+
+.card.card-panel {
+  aspect-ratio: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+.card.card-panel .card-head {
+  justify-content: center;
+  margin-bottom: 0.15rem;
+  flex-shrink: 0;
+}
+.card.card-panel .panel-sub {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  margin-bottom: 0.25rem;
+  flex-shrink: 0;
+}
+.square-body.panel-fill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  gap: 0.35rem;
+}
+.card.card-panel .controls-grid {
+  width: 100%;
+  max-width: 14rem;
+  margin: 0 auto;
+  gap: 0.45rem;
+}
+.info-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  max-width: 13rem;
+}
+.info-block {
+  width: 100%;
+  text-align: center;
+}
+.info-row-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  font-size: 0.8125rem;
+  width: 100%;
+}
+.info-row-panel .font-mono {
+  font-size: 0.8125rem;
+}
+.card.card-panel .heap-bar-wrap {
+  width: 100%;
+  max-width: 11rem;
+  margin: 0.2rem auto 0;
+}
+.voice-wrap {
+  text-align: center;
+  word-break: break-word;
+  white-space: normal;
+  max-width: 100%;
+  line-height: 1.35;
+}
+
+.card.card-panel.card-cam .square-body.panel-fill {
+  gap: 0.4rem;
+}
+.card.card-panel #cam-closed {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+}
+.card.card-panel #cam-open:not(.hidden) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  gap: 0.35rem;
+  align-items: center;
+  justify-content: center;
+}
+.card.card-panel .cam-frame {
+  aspect-ratio: 1;
+  width: 100%;
+  max-width: 11rem;
+  flex: 0 1 auto;
+  min-height: 0;
+  margin-top: 0;
+}
+.card.card-panel.card-cam .btn.w-full {
+  max-width: 12rem;
+}
+
+/* ── Overall Stress (large panel, value centered) ─── */
+.card-panel.card-overall-stress .overall-stress-big {
   display: flex;
   align-items: baseline;
-  gap: 0.35rem;
-  margin: 0.3rem 0 0.35rem;
+  justify-content: center;
+  gap: 0.2rem;
+  margin: 0;
 }
-.card-overall-stress .overall-stress-value {
-  font-size: 2.625rem;
+.card-panel.card-overall-stress .overall-stress-value {
+  font-size: clamp(2rem, 10vmin, 3.5rem);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -.02em;
+  letter-spacing: -0.02em;
   line-height: 1.05;
 }
-.card-overall-stress .overall-stress-unit {
-  font-size: 0.8125rem;
+.card-panel.card-overall-stress .overall-stress-unit {
+  font-size: 1.125rem;
   color: var(--fg-muted);
   font-weight: 500;
+}
+.card-panel.card-overall-stress .overall-msg {
+  font-size: 0.8125rem;
+  margin: 0;
+  max-width: 13rem;
+  line-height: 1.4;
 }
 .card-overall-stress.overall-stress-high .overall-stress-value,
 .card-overall-stress.overall-stress-high #overall-stress-msg { color: var(--yellow); }
@@ -211,14 +439,80 @@ body {
 /* ── Heart Rate Card ──────────────────────────────── */
 .hr-big    { display: flex; align-items: baseline; gap: .35rem; margin: .3rem 0 .35rem; }
 .hr-value  { font-size: 2.625rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; line-height: 1.05; }
-.hr-unit   { font-size: .8125rem; color: var(--fg-muted); font-weight: 500; }
+.hr-unit   { font-size: .9375rem; color: var(--fg-muted); font-weight: 500; }
+
+/* Heart rate, stress level, overall stress: center the metric block; title sits above without shifting center */
+#sensor-grid > .card.card-hr,
+#sensor-grid > .card:has(#stress-level),
+#overall-stress-card {
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 11rem;
+}
+#sensor-grid > .card.card-hr .card-head,
+#sensor-grid > .card:has(#stress-level) .card-head,
+#overall-stress-card .card-head {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 0;
+  justify-content: center;
+  width: max-content;
+  max-width: calc(100% - 2rem);
+}
+#sensor-grid > .card.card-hr .hr-big {
+  margin: 0;
+  justify-content: center;
+}
+#sensor-grid > .card.card-hr #hr-status {
+  margin: 0.35rem 0 0;
+  text-align: center;
+}
+#sensor-grid > .card:has(#stress-level) #stress-level {
+  margin: 0;
+  text-align: center;
+}
+#sensor-grid > .card:has(#stress-level) #gsr-value {
+  margin: 0.35rem 0 0;
+  text-align: center;
+}
+#overall-stress-card .overall-stress-big {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.35rem;
+  margin: 0;
+}
+#overall-stress-card #overall-stress-msg {
+  margin: 0.35rem 0 0;
+  text-align: center;
+}
+/* Overall stress %: same numeral styling as heart rate */
+#overall-stress-card .overall-stress-value {
+  font-size: 2.625rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+#overall-stress-card .overall-stress-unit {
+  font-size: 0.9375rem;
+  color: var(--fg-muted);
+  font-weight: 500;
+}
 
 /* ── Graphs Section: 3 square charts in one row, scale with page width ─── */
 .graphs-section {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1.125rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--tile-gap);
   width: 100%;
+}
+@media (max-width: 900px) {
+  .graphs-section { grid-template-columns: minmax(0, 1fr); }
 }
 .graph-card {
   padding: 0.875rem 1.125rem;
@@ -245,9 +539,16 @@ body {
 }
 .chart-wrap-short canvas { width: 100% !important; height: 100% !important; display: block; }
 
+.chart-wrap-wide {
+  aspect-ratio: 2 / 1;
+  width: 100%;
+  min-height: 140px;
+}
+.chart-wrap-wide canvas { width: 100% !important; height: 100% !important; display: block; }
+
 /* ── Stress Card ──────────────────────────────────── */
 .stress-big {
-  font-size: 2rem; font-weight: 700; margin: .3rem 0 .35rem; line-height: 1.15; letter-spacing: -.015em;
+  font-size: 2.5rem; font-weight: 700; margin: .3rem 0 .35rem; line-height: 1.15; letter-spacing: -.015em;
 }
 /* Only for "Please wear finger straps" so it fits in the card */
 .stress-big.stress-wear-strap { font-size: 0.8125rem; line-height: 1.35; letter-spacing: 0; }

@@ -144,9 +144,12 @@ function drawAxisChart(canvas, data, config) {
   const wrap = canvas.parentElement;
   const isShort = wrap && wrap.classList.contains("chart-wrap-short");
   const isSquare = wrap && wrap.classList.contains("chart-wrap-square");
+  const isWide = wrap && wrap.classList.contains("chart-wrap-wide");
   const size = wrap ? Math.min(wrap.offsetWidth || 400, wrap.offsetHeight || 400) : 400;
   const w = (isShort || isSquare) && wrap ? size : (wrap ? (wrap.offsetWidth || 600) : 600);
-  const h = (isShort || isSquare) && wrap ? size : (config.height || 140);
+  const h = (isShort || isSquare) && wrap
+    ? size
+    : (isWide && wrap ? (wrap.offsetHeight || Math.max(140, Math.round(w / 2))) : (config.height || 140));
 
   canvas.width  = w * dpr;
   canvas.height = h * dpr;
