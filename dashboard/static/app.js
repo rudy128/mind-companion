@@ -5,9 +5,8 @@
  */
 
 // ── State ──────────────────────────────────────────────────────
-const MAX_HISTORY      = 60;   // HR and Stress: 60 seconds
-const MAX_SLEEP_HISTORY = 120; // Sleep state: 120 seconds
 const BPM_OFFSET       = 28;   // Add to BPM from MQTT only (dashboard) to align with natural BPM
+// HR / stress / sleep chart series grow without a fixed cap (all samples kept for full history on graph)
 
 let hrHistory     = [];
 let sleepHistory  = [];
@@ -470,7 +469,6 @@ function updateData(d) {
   // Record HR every tick: 0 when no finger; when from MQTT use adjusted BPM
   const hrVal = displayBpm ? bpmDisplay : 0;
   hrHistory.push(hrVal);
-  if (hrHistory.length > MAX_HISTORY) hrHistory.shift();
   drawHrChart();
 
   // ── Stress ─────────────────────────────────────────────────
@@ -491,7 +489,6 @@ function updateData(d) {
   // Record stress every tick. When "please wear" state, use -1 so graph drops below Low (no reading).
   const stressVal = isWearStrap ? -1 : (d.stress in STRESS_MAP ? STRESS_MAP[d.stress] : 0);
   stressHistory.push(stressVal);
-  if (stressHistory.length > MAX_HISTORY) stressHistory.shift();
   drawStressChart();
 
   // ── Sleep ──────────────────────────────────────────────────
@@ -512,10 +509,9 @@ function updateData(d) {
     "Awake":       "sleep-awake",
   }[d.sleep] ?? "badge-outline");
 
-  // Record sleep (only Deep/Light/Awake) — keep 120 s for Sleep graph
+  // Record sleep (only Deep/Light/Awake mapped values)
   if (d.sleep in SLEEP_MAP) {
     sleepHistory.push(SLEEP_MAP[d.sleep]);
-    if (sleepHistory.length > MAX_SLEEP_HISTORY) sleepHistory.shift();
     drawSleepChart();
   }
 
