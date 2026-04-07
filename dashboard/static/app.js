@@ -70,7 +70,7 @@ function getSleepModifierPct(sleep) {
   return 0;
 }
 
-/** Shown when final % is in the 50–69 band; also used to toggle compact message typography. */
+/** Shown when final % is in the 50–69 band. */
 const OVERALL_LABEL_ASK_NEEDS = "Ask if child needs anything";
 
 /**
@@ -435,13 +435,14 @@ function updateData(d) {
       "overall-stress-high",
       "overall-stress-attention",
       "overall-stress-moderate",
-      "overall-stress-msg-compact",
     );
     if (overall.level === "attention") overallCard.classList.add("overall-stress-attention");
     else if (overall.pct != null && overall.pct >= 40) overallCard.classList.add("overall-stress-high");
     else if (overall.pct != null && overall.pct >= 20) overallCard.classList.add("overall-stress-moderate");
+    /* Drop any stale inline font-size, then lock 1.5rem for the long “ask” line (beats stray rules) */
+    overallMsg.style.removeProperty("font-size");
     if (overall.label === OVERALL_LABEL_ASK_NEEDS) {
-      overallCard.classList.add("overall-stress-msg-compact");
+      overallMsg.style.setProperty("font-size", "1.5rem", "important");
     }
   }
 

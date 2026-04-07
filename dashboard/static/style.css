@@ -492,10 +492,11 @@ body {
   gap: 0.35rem;
   margin: 0;
 }
+/* Dedicated class (no .card-sub): .card-sub’s 0.875rem was winning over this KPI line */
 #overall-stress-card #overall-stress-msg {
   margin: 0.35rem 0 0;
   text-align: center;
-  font-size: 1.5rem;
+  font-size: 1.5rem !important;
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: 0.03em;
@@ -507,9 +508,6 @@ body {
   min-width: 0;
   box-sizing: border-box;
   padding: 0 0.35rem;
-}
-#overall-stress-card.overall-stress-msg-compact #overall-stress-msg {
-  font-size: 0.9rem;
 }
 /* Overall stress %: same numeral styling as heart rate */
 #overall-stress-card .overall-stress-value {
