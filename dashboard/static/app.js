@@ -437,6 +437,11 @@ function updateData(d) {
     else if (overall.pct != null && overall.pct >= 40) overallCard.classList.add("overall-stress-high");
     else if (overall.pct != null && overall.pct >= 20) overallCard.classList.add("overall-stress-moderate");
     overallMsg.style.setProperty("font-size", "1rem", "important");
+    const msgColor = overall.level === "attention" ? "#f87171"
+      : (overall.pct != null && overall.pct >= 40) ? "#facc15"
+      : (overall.pct != null && overall.pct >= 20) ? "#22d3ee"
+      : "#4ade80";
+    overallMsg.style.setProperty("color", msgColor, "important");
   }
 
   // ── Heart Rate (add BPM_OFFSET only when we have a value from MQTT) ──

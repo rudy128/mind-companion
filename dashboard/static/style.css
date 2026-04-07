@@ -492,24 +492,7 @@ body {
   gap: 0.35rem;
   margin: 0;
 }
-/* Overall stress sentence — bottom KPI card only (id=overall-stress-msg) */
-#sensor-grid #overall-stress-card #overall-stress-msg,
-#overall-stress-card #overall-stress-msg {
-  margin: 0.35rem 0 0;
-  text-align: center;
-  font-size: 1rem !important;
-  font-weight: 600;
-  line-height: 1.25;
-  letter-spacing: 0.03em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  padding: 0 0.35rem;
-}
+/* #overall-stress-msg styling is inline in index.html */
 /* Overall stress %: same numeral styling as heart rate */
 #overall-stress-card .overall-stress-value {
   font-size: 2.625rem;
@@ -578,9 +561,8 @@ body {
   letter-spacing: 0.02em;
   line-height: 1.2;
 }
-/* GSR microsiemens under “Stress Level” — not the Overall stress sentence (#overall-stress-msg) */
 #sensor-grid > .card:has(#stress-level) #gsr-value {
-  font-size: 1rem;
+  font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1.35;
@@ -798,8 +780,3 @@ body {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--bg-muted); border-radius: 3px; }
-
-/* Last in file: wins over older copies / merge order. This is #overall-stress-msg, NOT #gsr-value. */
-html body #sensor-grid #overall-stress-card.card.card-overall-stress p#overall-stress-msg {
-  font-size: 1rem !important;
-}
