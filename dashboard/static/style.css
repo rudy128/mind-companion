@@ -508,7 +508,7 @@ body {
   box-sizing: border-box;
   padding: 0 0.35rem;
 }
-#overall-stress-card.overall-stress-msg-mid #overall-stress-msg {
+#overall-stress-card.overall-stress-msg-compact #overall-stress-msg {
   font-size: 0.9rem;
 }
 /* Overall stress %: same numeral styling as heart rate */
