@@ -494,7 +494,7 @@ body {
 #overall-stress-card #overall-stress-msg {
   margin: 0.35rem 0 0;
   text-align: center;
-  font-size: 0.6875rem;
+  font-size: 1.5rem;
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: 0.03em;
@@ -506,6 +506,9 @@ body {
   min-width: 0;
   box-sizing: border-box;
   padding: 0 0.35rem;
+}
+#overall-stress-card.overall-stress-msg-mid #overall-stress-msg {
+  font-size: 0.9rem;
 }
 /* Overall stress %: same numeral styling as heart rate */
 #overall-stress-card .overall-stress-value {

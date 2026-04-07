@@ -428,10 +428,18 @@ function updateData(d) {
   if (overallCard && overallPct && overallMsg) {
     overallPct.textContent = overall.pct != null ? overall.pct : "--";
     overallMsg.textContent = overall.label;
-    overallCard.classList.remove("overall-stress-high", "overall-stress-attention", "overall-stress-moderate");
+    overallCard.classList.remove(
+      "overall-stress-high",
+      "overall-stress-attention",
+      "overall-stress-moderate",
+      "overall-stress-msg-mid",
+    );
     if (overall.level === "attention") overallCard.classList.add("overall-stress-attention");
     else if (overall.pct != null && overall.pct >= 40) overallCard.classList.add("overall-stress-high");
     else if (overall.pct != null && overall.pct >= 20) overallCard.classList.add("overall-stress-moderate");
+    if (overall.pct != null && overall.pct >= 40 && overall.pct <= 60) {
+      overallCard.classList.add("overall-stress-msg-mid");
+    }
   }
 
   // ── Heart Rate (add BPM_OFFSET only when we have a value from MQTT) ──
