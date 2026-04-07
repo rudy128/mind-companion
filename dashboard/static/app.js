@@ -491,7 +491,7 @@ function updateData(d) {
     "High":     "stress-high",
   }[d.stress] ?? "muted";
   stressEl.className = "stress-big " + (isWearStrap ? "stress-wear-strap " : "") + stateClass;
-  stressEl.style.setProperty("font-size", "1rem", "important");
+  stressEl.style.setProperty("font-size", isWearStrap ? "1rem" : "3.125rem", "important");
 
   $("gsr-value").textContent = d.gsr != null
     ? `${Number(d.gsr).toFixed(1)} Ω`
