@@ -70,9 +70,6 @@ function getSleepModifierPct(sleep) {
   return 0;
 }
 
-/** Shown when final % is in the 50–69 band. */
-const OVERALL_LABEL_ASK_NEEDS = "Ask if child needs anything";
-
 /**
  * Human-readable line from final % (aligned with doc examples and table row names).
  */
@@ -80,7 +77,7 @@ function getOverallStressLabelFromFinalPct(pct) {
   if (pct >= 90) return "Attention Needed!";
   if (pct >= 75) return "High";
   if (pct >= 70) return "Elevated";
-  if (pct >= 50) return OVERALL_LABEL_ASK_NEEDS;
+  if (pct >= 50) return "Ask if child needs anything";
   if (pct >= 40) return "Elevated";
   if (pct >= 20) return "Mild concern";
   return "Child is doing great!";
@@ -439,11 +436,6 @@ function updateData(d) {
     if (overall.level === "attention") overallCard.classList.add("overall-stress-attention");
     else if (overall.pct != null && overall.pct >= 40) overallCard.classList.add("overall-stress-high");
     else if (overall.pct != null && overall.pct >= 20) overallCard.classList.add("overall-stress-moderate");
-    /* Drop any stale inline font-size, then lock 1.5rem for the long “ask” line (beats stray rules) */
-    overallMsg.style.removeProperty("font-size");
-    if (overall.label === OVERALL_LABEL_ASK_NEEDS) {
-      overallMsg.style.setProperty("font-size", "1rem", "important");
-    }
   }
 
   // ── Heart Rate (add BPM_OFFSET only when we have a value from MQTT) ──

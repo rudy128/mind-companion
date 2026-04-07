@@ -492,7 +492,7 @@ body {
   gap: 0.35rem;
   margin: 0;
 }
-/* Dedicated class (no .card-sub): .card-sub’s 0.875rem was winning over this KPI line */
+/* Overall stress KPI line — #overall-stress-msg (not #gsr-value; that’s ~line 580) */
 #overall-stress-card #overall-stress-msg {
   margin: 0.35rem 0 0;
   text-align: center;
