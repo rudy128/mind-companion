@@ -136,283 +136,258 @@ const waitData    = $("wait-data");
 const sensorGrid  = $("sensor-grid");
 const emergency   = $("emergency-banner");
 
-// ── Generic Axis Chart Renderer ─────────────────────────────────
-function drawAxisChart(canvas, data, config) {
-  const ctx = canvas.getContext("2d");
-  const dpr = window.devicePixelRatio || 1;
-  const wrap = canvas.parentElement;
-  const isShort = wrap && wrap.classList.contains("chart-wrap-short");
-  const isSquare = wrap && wrap.classList.contains("chart-wrap-square");
-  const isWide = wrap && wrap.classList.contains("chart-wrap-wide");
-  const size = wrap ? Math.min(wrap.offsetWidth || 400, wrap.offsetHeight || 400) : 400;
-  const w = isSquare && wrap ? size : (wrap ? (wrap.offsetWidth || 600) : 600);
-  const h = isSquare && wrap
-    ? size
-    : (isShort || isWide) && wrap
-      ? (wrap.offsetHeight || Math.max(64, Math.round(w / 3)))
-      : (config.height || 140);
+// ── Chart.js line charts (smooth HR, stepped sleep/stress; no markers) ───────
+const lineCharts = { hr: null, sleep: null, stress: null };
 
-  canvas.width  = w * dpr;
-  canvas.height = h * dpr;
-  canvas.style.width  = w + "px";
-  canvas.style.height  = h + "px";
-  ctx.scale(dpr, dpr);
-  ctx.clearRect(0, 0, w, h);
-
-  const left   = config.leftPad || 58;
-  const right  = 16;
-  const top    = 16;
-  const bottom = 28;
-  const plotW  = w - left - right;
-  const plotH  = h - top - bottom;
-
-  const color   = config.color;
-  const yLabels = config.yLabels;
-  const yMin    = config.yMin;
-  const yMax    = config.yMax;
-  const yRange  = yMax - yMin || 1;
-
-  const toY = v => top + plotH - ((v - yMin) / yRange) * plotH;
-  const toX = i => left + (data.length > 1 ? (i / (data.length - 1)) * plotW : 0);
-
-  // Grid lines + Y-axis labels
-  ctx.font = "11px 'JetBrains Mono', monospace";
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
-
-  for (const yl of yLabels) {
-    const y = toY(yl.value);
-    ctx.strokeStyle = "rgba(255,255,255,0.05)";
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    ctx.moveTo(left, y);
-    ctx.lineTo(w - right, y);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = "rgba(161,161,170,0.7)";
-    ctx.fillText(yl.label, left - 8, y);
-  }
-
-  // Axes
-  ctx.strokeStyle = "rgba(255,255,255,0.2)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(left, top);
-  ctx.lineTo(left, h - bottom);
-  ctx.lineTo(w - right, h - bottom);
-  ctx.stroke();
-
-  // X-axis ticks (every 10 samples)
-  ctx.font = "10px 'JetBrains Mono', monospace";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  ctx.fillStyle = "rgba(161,161,170,0.5)";
-  if (data.length > 1) {
-    const step = Math.max(10, Math.ceil(data.length / 6));
-    for (let i = 0; i < data.length; i += step) {
-      const x = toX(i);
-      ctx.beginPath();
-      ctx.moveTo(x, h - bottom);
-      ctx.lineTo(x, h - bottom + 4);
-      ctx.strokeStyle = "rgba(255,255,255,0.15)";
-      ctx.stroke();
-      ctx.fillText(`${i}s`, x, h - bottom + 5);
-    }
-  }
-
-  if (data.length === 0) return;
-
-  const validData = data.filter(v => v !== null);
-  if (validData.length === 0) return;
-
-  const pts = data.map((v, i) => ({
-    x: toX(i),
-    y: v !== null ? toY(v) : null,
+function seriesToPoints(arr) {
+  return arr.map((y, i) => ({
+    x: i,
+    y: y === null || y === undefined ? null : Number(y),
   }));
-
-  const grad = ctx.createLinearGradient(0, top, 0, h - bottom);
-  grad.addColorStop(0, color + "30");
-  grad.addColorStop(1, color + "05");
-
-  if (config.stepped) {
-    // Stepped line for categorical data
-    let started = false;
-    let firstX = 0, lastX = 0, lastPY = 0;
-
-    // Fill
-    ctx.beginPath();
-    for (let i = 0; i < pts.length; i++) {
-      if (pts[i].y === null) continue;
-      if (!started) {
-        ctx.moveTo(pts[i].x, pts[i].y);
-        firstX = pts[i].x;
-        started = true;
-      } else {
-        ctx.lineTo(pts[i].x, lastPY);
-        ctx.lineTo(pts[i].x, pts[i].y);
-      }
-      lastX = pts[i].x;
-      lastPY = pts[i].y;
-    }
-    if (started) {
-      ctx.lineTo(lastX, h - bottom);
-      ctx.lineTo(firstX, h - bottom);
-      ctx.closePath();
-      ctx.fillStyle = grad;
-      ctx.fill();
-    }
-
-    // Stroke
-    ctx.beginPath();
-    started = false;
-    for (let i = 0; i < pts.length; i++) {
-      if (pts[i].y === null) continue;
-      if (!started) {
-        ctx.moveTo(pts[i].x, pts[i].y);
-        started = true;
-      } else {
-        ctx.lineTo(pts[i].x, lastPY);
-        ctx.lineTo(pts[i].x, pts[i].y);
-      }
-      lastPY = pts[i].y;
-    }
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
-    ctx.lineJoin = "miter";
-    ctx.lineCap = "butt";
-    ctx.miterLimit = 4;
-    ctx.stroke();
-
-    const validStep = pts.filter(p => p.y !== null);
-    if (validStep.length === 1) {
-      const p = validStep[0];
-      ctx.beginPath();
-      ctx.moveTo(p.x - 3, p.y);
-      ctx.lineTo(p.x + 3, p.y);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
-      ctx.lineCap = "butt";
-      ctx.stroke();
-    }
-
-  } else {
-    // Smooth line for numeric data
-
-    // Fill
-    ctx.beginPath();
-    let first = true;
-    for (const p of pts) {
-      if (p.y === null) { first = true; continue; }
-      first ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
-      first = false;
-    }
-    const lastValid  = [...pts].reverse().find(p => p.y !== null);
-    const firstValid = pts.find(p => p.y !== null);
-    if (lastValid && firstValid) {
-      ctx.lineTo(lastValid.x, h - bottom);
-      ctx.lineTo(firstValid.x, h - bottom);
-      ctx.closePath();
-      ctx.fillStyle = grad;
-      ctx.fill();
-    }
-
-    // Stroke
-    ctx.beginPath();
-    first = true;
-    for (const p of pts) {
-      if (p.y === null) { first = true; continue; }
-      first ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
-      first = false;
-    }
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
-    ctx.lineJoin = "miter";
-    ctx.lineCap = "butt";
-    ctx.miterLimit = 4;
-    ctx.stroke();
-
-    const validPts = pts.filter(p => p.y !== null);
-    if (validPts.length === 1) {
-      const p = validPts[0];
-      ctx.beginPath();
-      ctx.moveTo(p.x - 3, p.y);
-      ctx.lineTo(p.x + 3, p.y);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
-      ctx.lineCap = "butt";
-      ctx.stroke();
-    }
-  }
 }
 
-// ── Chart draw wrappers ─────────────────────────────────────────
+function xAxisMax(len) {
+  return len <= 1 ? 1 : len - 1;
+}
+
+function chartJsBaseOptions() {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    parsing: false,
+    interaction: { intersect: false, mode: "index" },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          title(items) {
+            const t = items[0]?.parsed?.x;
+            return t != null ? `t = ${Math.round(t)}s` : "";
+          },
+        },
+      },
+    },
+    elements: {
+      point: { radius: 0, hoverRadius: 0, hitRadius: 0 },
+      line: { borderWidth: 2, tension: 0 },
+    },
+    scales: {
+      x: {
+        type: "linear",
+        min: 0,
+        max: 1,
+        grid: { color: "rgba(255,255,255,0.06)", tickLength: 0 },
+        border: { color: "rgba(255,255,255,0.2)", display: true },
+        ticks: {
+          color: "rgba(161,161,170,0.75)",
+          font: { family: "'JetBrains Mono', monospace", size: 10 },
+          maxTicksLimit: 14,
+          callback(v) {
+            const n = Number(v);
+            return Number.isInteger(n) && n % 10 === 0 ? `${n}s` : "";
+          },
+        },
+      },
+    },
+  };
+}
 
 function drawHrChart() {
+  const canvas = $("hr-chart");
+  if (!canvas || typeof Chart === "undefined") return;
+
   const vals = hrHistory.filter(v => v > 0);
   const yMin = 0;
   let yMax = 160;
-  let labels;
-
   if (vals.length > 0) {
     yMax = Math.max(100, Math.max(...vals) + 10);
-    const mid = Math.round((yMin + yMax) / 2);
-    labels = [
-      { value: 0,   label: "0" },
-      { value: mid, label: `${Math.round(mid)}` },
-      { value: Math.round(yMax), label: `${Math.round(yMax)}` },
-    ];
-  } else {
-    labels = [
-      { value: 0,   label: "0" },
-      { value: 80,  label: "80" },
-      { value: 160, label: "160" },
-    ];
+  }
+  const isAbnormal = vals.some(v => v > 120 || v < 50);
+  const borderColor = isAbnormal ? "#f87171" : "#4ade80";
+  const fillColor = isAbnormal ? "rgba(248,113,113,0.12)" : "rgba(74,222,128,0.12)";
+  const data = seriesToPoints(hrHistory);
+  const xMax = xAxisMax(data.length);
+  const base = chartJsBaseOptions();
+
+  const hrYTickCallback = v => {
+    const r = Math.round(Number(v));
+    const m = Math.round((yMin + yMax) / 2);
+    if (r === 0 || r === m || r === Math.round(yMax)) return String(r);
+    return "";
+  };
+
+  if (!lineCharts.hr) {
+    lineCharts.hr = new Chart(canvas, {
+      type: "line",
+      data: {
+        datasets: [{
+          data,
+          parsing: false,
+          borderColor,
+          backgroundColor: fillColor,
+          borderWidth: 2,
+          tension: 0.4,
+          fill: true,
+          spanGaps: false,
+        }],
+      },
+      options: {
+        ...base,
+        elements: {
+          ...base.elements,
+          point: { radius: 0, hoverRadius: 0, hitRadius: 0 },
+        },
+        scales: {
+          ...base.scales,
+          x: { ...base.scales.x, min: 0, max: xMax },
+          y: {
+            min: yMin,
+            max: yMax,
+            grid: { color: "rgba(255,255,255,0.06)" },
+            border: { color: "rgba(255,255,255,0.2)", display: true },
+            ticks: {
+              color: "rgba(161,161,170,0.7)",
+              font: { family: "'JetBrains Mono', monospace", size: 11 },
+              callback: hrYTickCallback,
+            },
+          },
+        },
+      },
+    });
+    return;
   }
 
-  const isAbnormal = vals.some(v => v > 120 || v < 50);
-  drawAxisChart($("hr-chart"), hrHistory, {
-    height:  150,
-    color:   isAbnormal ? "#f87171" : "#4ade80",
-    yMin,
-    yMax,
-    yLabels: labels,
-    stepped: false,
-    leftPad: 54,
-  });
+  const ds = lineCharts.hr.data.datasets[0];
+  ds.data = data;
+  ds.borderColor = borderColor;
+  ds.backgroundColor = fillColor;
+  lineCharts.hr.options.scales.x.min = 0;
+  lineCharts.hr.options.scales.x.max = xMax;
+  lineCharts.hr.options.scales.y.min = yMin;
+  lineCharts.hr.options.scales.y.max = yMax;
+  lineCharts.hr.options.scales.y.ticks.callback = hrYTickCallback;
+  lineCharts.hr.update("none");
+  lineCharts.hr.resize();
 }
 
 function drawSleepChart() {
-  drawAxisChart($("sleep-chart"), sleepHistory, {
-    height:  130,
-    color:   "#60a5fa",
-    yMin:    -0.3,
-    yMax:    2.3,
-    yLabels: [
-      { value: 0, label: "Deep" },
-      { value: 1, label: "Light" },
-      { value: 2, label: "Awake" },
-    ],
-    stepped: true,
-    leftPad: 56,
-  });
+  const canvas = $("sleep-chart");
+  if (!canvas || typeof Chart === "undefined") return;
+
+  const data = seriesToPoints(sleepHistory);
+  const xMax = xAxisMax(data.length);
+
+  if (!lineCharts.sleep) {
+    const base = chartJsBaseOptions();
+    lineCharts.sleep = new Chart(canvas, {
+      type: "line",
+      data: {
+        datasets: [{
+          data,
+          parsing: false,
+          stepped: "before",
+          borderColor: "#60a5fa",
+          backgroundColor: "rgba(96,165,250,0.12)",
+          borderWidth: 2,
+          tension: 0,
+          fill: true,
+          spanGaps: true,
+        }],
+      },
+      options: {
+        ...base,
+        scales: {
+          ...base.scales,
+          x: { ...base.scales.x, min: 0, max: xMax },
+          y: {
+            min: -0.3,
+            max: 2.3,
+            grid: { color: "rgba(255,255,255,0.06)" },
+            border: { color: "rgba(255,255,255,0.2)", display: true },
+            ticks: {
+              stepSize: 1,
+              color: "rgba(161,161,170,0.7)",
+              font: { family: "'JetBrains Mono', monospace", size: 11 },
+              callback(v) {
+                const n = Math.round(Number(v));
+                const m = { 0: "Deep", 1: "Light", 2: "Awake" };
+                return m[n] ?? "";
+              },
+            },
+          },
+        },
+      },
+    });
+    return;
+  }
+
+  lineCharts.sleep.data.datasets[0].data = data;
+  lineCharts.sleep.options.scales.x.min = 0;
+  lineCharts.sleep.options.scales.x.max = xMax;
+  lineCharts.sleep.update("none");
+  lineCharts.sleep.resize();
 }
 
 function drawStressChart() {
-  drawAxisChart($("stress-chart"), stressHistory, {
-    height:  130,
-    color:   "#facc15",
-    yMin:    -1.2,
-    yMax:    2.3,
-    yLabels: [
-      { value: -1, label: "—" },
-      { value: 0,  label: "Low" },
-      { value: 1,  label: "Mid" },
-      { value: 2,  label: "High" },
-    ],
-    stepped: true,
-    leftPad: 56,
-  });
+  const canvas = $("stress-chart");
+  if (!canvas || typeof Chart === "undefined") return;
+
+  const data = seriesToPoints(stressHistory);
+  const xMax = xAxisMax(data.length);
+
+  if (!lineCharts.stress) {
+    const base = chartJsBaseOptions();
+    lineCharts.stress = new Chart(canvas, {
+      type: "line",
+      data: {
+        datasets: [{
+          data,
+          parsing: false,
+          stepped: "before",
+          borderColor: "#facc15",
+          backgroundColor: "rgba(250,204,21,0.12)",
+          borderWidth: 2,
+          tension: 0,
+          fill: true,
+          spanGaps: true,
+        }],
+      },
+      options: {
+        ...base,
+        scales: {
+          ...base.scales,
+          x: { ...base.scales.x, min: 0, max: xMax },
+          y: {
+            min: -1.2,
+            max: 2.3,
+            grid: { color: "rgba(255,255,255,0.06)" },
+            border: { color: "rgba(255,255,255,0.2)", display: true },
+            ticks: {
+              stepSize: 1,
+              color: "rgba(161,161,170,0.7)",
+              font: { family: "'JetBrains Mono', monospace", size: 11 },
+              callback(v) {
+                const n = Math.round(Number(v));
+                if (n === -1) return "—";
+                if (n === 0) return "Low";
+                if (n === 1) return "Mid";
+                if (n === 2) return "High";
+                return "";
+              },
+            },
+          },
+        },
+      },
+    });
+    return;
+  }
+
+  lineCharts.stress.data.datasets[0].data = data;
+  lineCharts.stress.options.scales.x.min = 0;
+  lineCharts.stress.options.scales.x.max = xMax;
+  lineCharts.stress.update("none");
+  lineCharts.stress.resize();
 }
 
 function redrawAllCharts() {
@@ -421,7 +396,11 @@ function redrawAllCharts() {
   drawStressChart();
 }
 
-window.addEventListener("resize", redrawAllCharts);
+window.addEventListener("resize", () => {
+  Object.values(lineCharts).forEach(c => {
+    if (c) c.resize();
+  });
+});
 
 // ── Connection state UI ────────────────────────────────────────
 function setConnectionState(state) {
