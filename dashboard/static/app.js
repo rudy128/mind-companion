@@ -278,15 +278,15 @@ function drawAxisChart(canvas, data, config) {
       lastPY = pts[i].y;
     }
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.25;
     ctx.lineJoin = "round";
     ctx.stroke();
 
-    // Dots at each data point
-    for (const p of pts) {
-      if (p.y === null) continue;
+    const validStep = pts.filter(p => p.y !== null);
+    if (validStep.length === 1) {
+      const p = validStep[0];
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, 1.75, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
     }
@@ -321,16 +321,17 @@ function drawAxisChart(canvas, data, config) {
       first = false;
     }
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.25;
     ctx.lineJoin = "round";
     ctx.lineCap  = "round";
     ctx.stroke();
 
-    // Dots
-    for (const p of pts) {
-      if (p.y === null) continue;
+    // Single visible point: no line segment — show a small dot only then
+    const validPts = pts.filter(p => p.y !== null);
+    if (validPts.length === 1) {
+      const p = validPts[0];
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, 1.75, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
     }
