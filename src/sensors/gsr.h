@@ -9,11 +9,11 @@
 // Initialize GSR sensor
 void   gsrInit();
 
-// Read GSR sensor and return skin conductance in µS
-// Higher conductance → more sweat → higher stress
+// Read GSR sensor and return scaled conductance (0–50)
+// 0 = not worn, 0–15 Low, 15–30 Moderate, 30–50 High
 float  gsrReadConductance();
 
-// Convert conductance (µS) to a stress level string
-String gsrGetStressLevel(float conductance);   
+// Convert scaled conductance to a stress level string
+String gsrGetStressLevel(float scaledValue);   
 
 #endif 

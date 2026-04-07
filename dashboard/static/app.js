@@ -492,7 +492,7 @@ function updateData(d) {
 
   $("gsr-value").textContent = d.gsr != null
     ? `${Number(d.gsr).toFixed(1)} µS`
-    : "-- µS";
+    : "-- ";
 
   const stressVal = isWearStrap ? 0 : (d.stress in STRESS_MAP ? STRESS_MAP[d.stress] : 0);
   stressHistory.push(stressVal);

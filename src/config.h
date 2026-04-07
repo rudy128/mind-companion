@@ -91,10 +91,14 @@
 #define MOVEMENT_THRESHOLD       0.2f   // g-force delta for "movement detected"
 #define HR_ABNORMAL_HIGH         150    // BPM above this triggers breathing LED
 #define HR_ABNORMAL_LOW          50     // BPM below this triggers breathing LED
-// Conductance thresholds (µS).  Higher µS = more sweat = higher stress.
-#define GSR_WEAR_THRESHOLD       125.0f   // below this → sensor not worn
-#define GSR_LOW_THRESHOLD        250.0f   // ≤ this → Low stress
-#define GSR_MODERATE_THRESHOLD   500.0f   // ≤ this → Moderate; above → High
+// Raw conductance (µS) boundaries used for scaling into 0–50 range
+#define GSR_RAW_WEAR             125.0f   // below this raw µS → not worn (output 0)
+#define GSR_RAW_MAX              500.0f   // raw µS that maps to ~50 on the scale
+
+// Scaled thresholds (after mapping raw µS → 0–50)
+#define GSR_WEAR_THRESHOLD         0.5f   // below this → sensor not worn
+#define GSR_LOW_THRESHOLD         15.0f   // 0–15  → Low stress
+#define GSR_MODERATE_THRESHOLD    30.0f   // 15–30 → Moderate; 30–50 → High
 
 // ========================= RTC (DST handling) =========================
 // DS3231 stores "whatever you set it to" (often local time). The firmware

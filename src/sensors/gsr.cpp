@@ -24,16 +24,20 @@ float gsrReadConductance() {
     if (avg <= 1) avg = 1;
     if (avg >= (GSR_ADC_MAX - 1)) avg = GSR_ADC_MAX - 1;
 
-    float resistance = GSR_R_REF * (avg / (GSR_ADC_MAX - avg));
-    float conductance = 1000000.0f / resistance;   // µS
+    float resistance  = GSR_R_REF * (avg / (GSR_ADC_MAX - avg));
+    float rawMicroS   = 1000000.0f / resistance;
 
-    return conductance;
+    // Scale raw µS into 0–50 range: wear threshold → 0, GSR_RAW_MAX → 50
+    float scaled = (rawMicroS - GSR_RAW_WEAR) / (GSR_RAW_MAX - GSR_RAW_WEAR) * 50.0f;
+    if (scaled < 0.0f) scaled = 0.0f;
+    if (scaled > 50.0f) scaled = 50.0f;
+
+    return scaled;
 }
 
-String gsrGetStressLevel(float conductance) {
-    // Higher conductance = more sweat = higher stress
-    if (conductance < GSR_WEAR_THRESHOLD)       return "Please wear finger straps";
-    if (conductance <= GSR_LOW_THRESHOLD)        return "Low";
-    if (conductance <= GSR_MODERATE_THRESHOLD)   return "Moderate";
+String gsrGetStressLevel(float scaledValue) {
+    if (scaledValue < GSR_WEAR_THRESHOLD)        return "Please wear finger straps";
+    if (scaledValue <= GSR_LOW_THRESHOLD)         return "Low";
+    if (scaledValue <= GSR_MODERATE_THRESHOLD)    return "Moderate";
     return "High";
 }
