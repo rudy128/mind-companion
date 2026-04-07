@@ -27,9 +27,11 @@ float gsrReadConductance() {
     float resistance  = GSR_R_REF * (avg / (GSR_ADC_MAX - avg));
     float rawMicroS   = 1000000.0f / resistance;
 
-    // Scale raw µS into 0–50 range: wear threshold → 0, GSR_RAW_MAX → 50
     float scaled = (rawMicroS - GSR_RAW_WEAR) / (GSR_RAW_MAX - GSR_RAW_WEAR) * 50.0f;
     if (scaled < 0.0f) scaled = 0.0f;
+
+    // Divide by 1.25 so values that were capping at 50 now have room above
+    scaled = scaled / 1.25f;
     if (scaled > 50.0f) scaled = 50.0f;
 
     return scaled;
