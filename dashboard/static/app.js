@@ -442,7 +442,7 @@ function updateData(d) {
     /* Drop any stale inline font-size, then lock 1.5rem for the long “ask” line (beats stray rules) */
     overallMsg.style.removeProperty("font-size");
     if (overall.label === OVERALL_LABEL_ASK_NEEDS) {
-      overallMsg.style.setProperty("font-size", "1.5rem", "important");
+      overallMsg.style.setProperty("font-size", "1rem", "important");
     }
   }
 
