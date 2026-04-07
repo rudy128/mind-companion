@@ -278,17 +278,22 @@ function drawAxisChart(canvas, data, config) {
       lastPY = pts[i].y;
     }
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1.25;
-    ctx.lineJoin = "round";
+    ctx.lineWidth = 1;
+    ctx.lineJoin = "miter";
+    ctx.lineCap = "butt";
+    ctx.miterLimit = 4;
     ctx.stroke();
 
     const validStep = pts.filter(p => p.y !== null);
     if (validStep.length === 1) {
       const p = validStep[0];
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 1.75, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
+      ctx.moveTo(p.x - 3, p.y);
+      ctx.lineTo(p.x + 3, p.y);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.lineCap = "butt";
+      ctx.stroke();
     }
 
   } else {
@@ -321,19 +326,22 @@ function drawAxisChart(canvas, data, config) {
       first = false;
     }
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1.25;
-    ctx.lineJoin = "round";
-    ctx.lineCap  = "round";
+    ctx.lineWidth = 1;
+    ctx.lineJoin = "miter";
+    ctx.lineCap = "butt";
+    ctx.miterLimit = 4;
     ctx.stroke();
 
-    // Single visible point: no line segment — show a small dot only then
     const validPts = pts.filter(p => p.y !== null);
     if (validPts.length === 1) {
       const p = validPts[0];
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 1.75, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
+      ctx.moveTo(p.x - 3, p.y);
+      ctx.lineTo(p.x + 3, p.y);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.lineCap = "butt";
+      ctx.stroke();
     }
   }
 }
