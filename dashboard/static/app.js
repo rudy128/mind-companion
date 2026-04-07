@@ -491,8 +491,8 @@ function updateData(d) {
   stressEl.style.setProperty("font-size", isWearStrap ? "1rem" : "3.125rem", "important");
 
   $("gsr-value").textContent = d.gsr != null
-    ? `${Number(d.gsr).toFixed(1)} Ω`
-    : "-- Ω";
+    ? `${Number(d.gsr).toFixed(1)} µS`
+    : "-- µS";
 
   const stressVal = isWearStrap ? 0 : (d.stress in STRESS_MAP ? STRESS_MAP[d.stress] : 0);
   stressHistory.push(stressVal);

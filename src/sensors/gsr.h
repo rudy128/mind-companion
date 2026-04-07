@@ -9,11 +9,11 @@
 // Initialize GSR sensor
 void   gsrInit();
 
-// Read GSR sensor and calculate conductance (µS)
-// Lower resistance → more sweat → higher stress
-float  gsrReadConductance();  
+// Read GSR sensor and return skin conductance in µS
+// Higher conductance → more sweat → higher stress
+float  gsrReadConductance();
 
-// Convert conductance value to a stress level string
-String gsrGetStressLevel(float c);   
+// Convert conductance (µS) to a stress level string
+String gsrGetStressLevel(float conductance);   
 
 #endif 
