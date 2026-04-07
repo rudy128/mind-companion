@@ -115,7 +115,8 @@ body {
   white-space: nowrap;
 }
 .badge-dot {
-  width: .5rem; height: .5rem;
+  width: .35rem; height: .35rem;
+  flex-shrink: 0;
   border-radius: 50%;
   background: currentColor;
 }
@@ -713,7 +714,7 @@ body {
 .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
 .breath-dot {
   position: absolute; top: .25rem; right: .25rem;
-  width: .5rem; height: .5rem;
+  width: .35rem; height: .35rem;
   border-radius: 50%;
   background: var(--primary);
   animation: breathe 4s ease-in-out infinite;
