@@ -203,7 +203,8 @@ function drawHrChart() {
   if (vals.length > 0) {
     yMax = Math.max(100, Math.max(...vals) + 10);
   }
-  const isAbnormal = vals.some(v => v > 120 || v < 50);
+  const latest = vals.length > 0 ? vals[vals.length - 1] : 0;
+  const isAbnormal = latest > 120;
   const borderColor = isAbnormal ? "#f87171" : "#4ade80";
   const fillColor = isAbnormal ? "rgba(248,113,113,0.12)" : "rgba(74,222,128,0.12)";
   const data = seriesToPoints(hrHistory);
@@ -286,12 +287,11 @@ function drawSleepChart() {
         datasets: [{
           data,
           parsing: false,
-          stepped: "before",
           borderColor: "#60a5fa",
           backgroundColor: "rgba(96,165,250,0.12)",
           borderWidth: 2,
-          tension: 0,
-          fill: true,
+          tension: 0.4,
+          fill: "origin",
           spanGaps: true,
         }],
       },
@@ -305,14 +305,22 @@ function drawSleepChart() {
             max: 2.3,
             grid: { color: "rgba(255,255,255,0.06)" },
             border: { color: "rgba(255,255,255,0.2)", display: true },
+            afterBuildTicks(axis) {
+              axis.ticks = [
+                { value: 0 },
+                { value: 1 },
+                { value: 2 },
+              ];
+            },
             ticks: {
-              stepSize: 1,
               color: "rgba(161,161,170,0.7)",
               font: { family: "'JetBrains Mono', monospace", size: 11 },
               callback(v) {
                 const n = Math.round(Number(v));
-                const m = { 0: "Deep", 1: "Light", 2: "Awake" };
-                return m[n] ?? "";
+                if (n === 0) return "Deep";
+                if (n === 1) return "Light";
+                if (n === 2) return "Awake";
+                return "";
               },
             },
           },
@@ -344,12 +352,11 @@ function drawStressChart() {
         datasets: [{
           data,
           parsing: false,
-          stepped: "before",
           borderColor: "#facc15",
           backgroundColor: "rgba(250,204,21,0.12)",
           borderWidth: 2,
-          tension: 0,
-          fill: true,
+          tension: 0.4,
+          fill: "origin",
           spanGaps: true,
         }],
       },
@@ -359,17 +366,22 @@ function drawStressChart() {
           ...base.scales,
           x: { ...base.scales.x, min: 0, max: xMax },
           y: {
-            min: -1.2,
+            min: -0.3,
             max: 2.3,
             grid: { color: "rgba(255,255,255,0.06)" },
             border: { color: "rgba(255,255,255,0.2)", display: true },
+            afterBuildTicks(axis) {
+              axis.ticks = [
+                { value: 0 },
+                { value: 1 },
+                { value: 2 },
+              ];
+            },
             ticks: {
-              stepSize: 1,
               color: "rgba(161,161,170,0.7)",
               font: { family: "'JetBrains Mono', monospace", size: 11 },
               callback(v) {
                 const n = Math.round(Number(v));
-                if (n === -1) return "—";
                 if (n === 0) return "Low";
                 if (n === 1) return "Mid";
                 if (n === 2) return "High";
@@ -485,8 +497,7 @@ function updateData(d) {
     ? `${Number(d.gsr).toFixed(1)} Ω`
     : "-- Ω";
 
-  // Record stress every tick. When "please wear" state, use -1 so graph drops below Low (no reading).
-  const stressVal = isWearStrap ? -1 : (d.stress in STRESS_MAP ? STRESS_MAP[d.stress] : 0);
+  const stressVal = isWearStrap ? 0 : (d.stress in STRESS_MAP ? STRESS_MAP[d.stress] : 0);
   stressHistory.push(stressVal);
   drawStressChart();
 
