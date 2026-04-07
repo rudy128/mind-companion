@@ -479,10 +479,6 @@ body {
   margin: 0.35rem 0 0;
   text-align: center;
 }
-#sensor-grid > .card:has(#stress-level) #stress-level {
-  margin: 0;
-  text-align: center;
-}
 #sensor-grid > .card:has(#stress-level) #gsr-value {
   margin: 0.35rem 0 0;
   text-align: center;
@@ -544,16 +540,27 @@ body {
 #sensor-grid > .card.card-hr #hr-status {
   font-size: 1rem;
 }
-/* Stress word + µS: same font size/weight/spacing as "Stress Level" .card-label */
+/* Stress line: one row only (no wrap → GSR µS stays put); smaller type + ellipsis if still long */
 #sensor-grid > .card:has(#stress-level) #stress-level {
+  margin: 0;
+  text-align: center;
+  font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  line-height: 1.35;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 0.15rem;
 }
 #sensor-grid > .card:has(#stress-level) #stress-level.stress-wear-strap {
-  font-size: 0.625rem;
+  font-size: 0.5625rem;
   letter-spacing: 0.02em;
-  line-height: 1.35;
+  line-height: 1.2;
 }
 #sensor-grid > .card:has(#stress-level) #gsr-value {
   font-size: 1.5rem;
@@ -562,6 +569,7 @@ body {
   line-height: 1.35;
   font-family: inherit;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 /* Sleep body copy = same size as Sleep Quality label */
 #sensor-grid > .card:has(#sleep-desc) #sleep-desc {
