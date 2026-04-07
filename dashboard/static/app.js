@@ -481,8 +481,8 @@ function updateData(d) {
   stressEl.className = "stress-big " + (isWearStrap ? "stress-wear-strap " : "") + stateClass;
 
   $("gsr-value").textContent = d.gsr != null
-    ? `${Number(d.gsr).toFixed(1)} µS`
-    : "-- µS";
+    ? `${Number(d.gsr).toFixed(1)} Ω`
+    : "-- Ω";
 
   // Record stress every tick. When "please wear" state, use -1 so graph drops below Low (no reading).
   const stressVal = isWearStrap ? -1 : (d.stress in STRESS_MAP ? STRESS_MAP[d.stress] : 0);
