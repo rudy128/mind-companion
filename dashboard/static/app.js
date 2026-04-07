@@ -14,7 +14,7 @@ let stressHistory = [];
 let camAutoOpened = false;
 
 const SLEEP_MAP  = { "Deep Sleep": 0, "Light Sleep": 1, "Awake": 2 };
-const STRESS_MAP = { "Low": 0, "Moderate": 1, "High": 2 };
+const STRESS_MAP = { "Low": 1, "Moderate": 2, "High": 3 };
 
 const SLEEP_KNOWN = ["Deep Sleep", "Light Sleep", "Restless", "Awake"];
 
@@ -198,11 +198,6 @@ function drawHrChart() {
   if (!canvas || typeof Chart === "undefined") return;
 
   const vals = hrHistory.filter(v => v > 0);
-  const yMin = 0;
-  let yMax = 160;
-  if (vals.length > 0) {
-    yMax = Math.max(100, Math.max(...vals) + 10);
-  }
   const latest = vals.length > 0 ? vals[vals.length - 1] : 0;
   const isAbnormal = latest > 120;
   const borderColor = isAbnormal ? "#f87171" : "#4ade80";
@@ -210,13 +205,6 @@ function drawHrChart() {
   const data = seriesToPoints(hrHistory);
   const xMax = xAxisMax(data.length);
   const base = chartJsBaseOptions();
-
-  const hrYTickCallback = v => {
-    const r = Math.round(Number(v));
-    const m = Math.round((yMin + yMax) / 2);
-    if (r === 0 || r === m || r === Math.round(yMax)) return String(r);
-    return "";
-  };
 
   if (!lineCharts.hr) {
     lineCharts.hr = new Chart(canvas, {
@@ -229,7 +217,7 @@ function drawHrChart() {
           backgroundColor: fillColor,
           borderWidth: 2,
           tension: 0.4,
-          fill: true,
+          fill: "origin",
           spanGaps: false,
         }],
       },
@@ -243,14 +231,25 @@ function drawHrChart() {
           ...base.scales,
           x: { ...base.scales.x, min: 0, max: xMax },
           y: {
-            min: yMin,
-            max: yMax,
+            min: 0,
+            max: 150,
             grid: { color: "rgba(255,255,255,0.06)" },
             border: { color: "rgba(255,255,255,0.2)", display: true },
+            afterBuildTicks(axis) {
+              axis.ticks = [
+                { value: 50 },
+                { value: 100 },
+                { value: 150 },
+              ];
+            },
             ticks: {
               color: "rgba(161,161,170,0.7)",
               font: { family: "'JetBrains Mono', monospace", size: 11 },
-              callback: hrYTickCallback,
+              callback(v) {
+                const n = Math.round(Number(v));
+                if (n === 50 || n === 100 || n === 150) return String(n);
+                return "";
+              },
             },
           },
         },
@@ -265,9 +264,6 @@ function drawHrChart() {
   ds.backgroundColor = fillColor;
   lineCharts.hr.options.scales.x.min = 0;
   lineCharts.hr.options.scales.x.max = xMax;
-  lineCharts.hr.options.scales.y.min = yMin;
-  lineCharts.hr.options.scales.y.max = yMax;
-  lineCharts.hr.options.scales.y.ticks.callback = hrYTickCallback;
   lineCharts.hr.update("none");
   lineCharts.hr.resize();
 }
@@ -367,7 +363,7 @@ function drawStressChart() {
           x: { ...base.scales.x, min: 0, max: xMax },
           y: {
             min: -0.3,
-            max: 2.3,
+            max: 3.3,
             grid: { color: "rgba(255,255,255,0.06)" },
             border: { color: "rgba(255,255,255,0.2)", display: true },
             afterBuildTicks(axis) {
@@ -375,6 +371,7 @@ function drawStressChart() {
                 { value: 0 },
                 { value: 1 },
                 { value: 2 },
+                { value: 3 },
               ];
             },
             ticks: {
@@ -382,9 +379,10 @@ function drawStressChart() {
               font: { family: "'JetBrains Mono', monospace", size: 11 },
               callback(v) {
                 const n = Math.round(Number(v));
-                if (n === 0) return "Low";
-                if (n === 1) return "Mid";
-                if (n === 2) return "High";
+                if (n === 0) return "0";
+                if (n === 1) return "Low";
+                if (n === 2) return "Mid";
+                if (n === 3) return "High";
                 return "";
               },
             },
@@ -476,8 +474,7 @@ function updateData(d) {
   // Finger badge on graph
   $("finger-badge").classList.toggle("hidden", !d.finger);
 
-  // Record HR every tick: 0 when no finger; when from MQTT use adjusted BPM
-  const hrVal = displayBpm ? bpmDisplay : 0;
+  const hrVal = displayBpm ? Math.min(bpmDisplay, 150) : 0;
   hrHistory.push(hrVal);
   drawHrChart();
 
