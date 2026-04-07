@@ -492,7 +492,8 @@ body {
   gap: 0.35rem;
   margin: 0;
 }
-/* Overall stress KPI line — #overall-stress-msg (not #gsr-value; that’s ~line 580) */
+/* Overall stress sentence — bottom KPI card only (id=overall-stress-msg) */
+#sensor-grid #overall-stress-card #overall-stress-msg,
 #overall-stress-card #overall-stress-msg {
   margin: 0.35rem 0 0;
   text-align: center;
@@ -577,8 +578,9 @@ body {
   letter-spacing: 0.02em;
   line-height: 1.2;
 }
+/* GSR microsiemens under “Stress Level” — not the Overall stress sentence (#overall-stress-msg) */
 #sensor-grid > .card:has(#stress-level) #gsr-value {
-  font-size: 1.5rem;
+  font-size: 1rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1.35;
