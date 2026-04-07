@@ -798,3 +798,8 @@ body {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--bg-muted); border-radius: 3px; }
+
+/* Last in file: wins over older copies / merge order. This is #overall-stress-msg, NOT #gsr-value. */
+html body #sensor-grid #overall-stress-card.card.card-overall-stress p#overall-stress-msg {
+  font-size: 1rem !important;
+}

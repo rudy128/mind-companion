@@ -104,6 +104,14 @@ def start_mqtt():
 
 mqtt_client = None   # populated in __main__
 
+# ── Static assets: don’t let browsers keep a stale style.css (wrong line # / old 1.5rem rules) ──
+@app.after_request
+def _no_store_static(response):
+    if request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store, max-age=0, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
 # ── Flask routes ──────────────────────────────────────────────
 
 @app.route("/")
