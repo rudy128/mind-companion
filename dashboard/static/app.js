@@ -112,7 +112,7 @@ function getOverallStress(d) {
 
   if (base == null) {
     const label =
-      wearStrap && !hasHR ? (d.stress || "—") : "Not enough data";
+      wearStrap && !hasHR ? "Wear finger straps" : "Not enough data";
     return { pct: null, label, level: "normal" };
   }
 
